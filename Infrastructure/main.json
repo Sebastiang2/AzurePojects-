@@ -1,0 +1,1432 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.47.16.16243",
+      "templateHash": "1388859777546835895"
+    }
+  },
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "allowedValues": [
+        "dev",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Deployment environment"
+      }
+    },
+    "workloadName": {
+      "type": "string",
+      "metadata": {
+        "description": "Workload name"
+      }
+    },
+    "instance": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource instance number"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Azure region"
+      }
+    },
+    "tags": {
+      "type": "object",
+      "metadata": {
+        "description": "Common resource tags"
+      }
+    },
+    "vnetAddressPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet address space"
+      }
+    },
+    "appServiceSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "App Service integration subnet prefix"
+      }
+    },
+    "mysqlSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "MySQL delegated subnet prefix"
+      }
+    },
+    "privateEndpointSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Private Endpoint subnet prefix"
+      }
+    },
+    "mysqlAdminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "admin username for MySQL server"
+      }
+    },
+    "mysqlAdminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "admin password for MySQL server"
+      }
+    },
+    "mysqlSkuTier": {
+      "type": "string",
+      "metadata": {
+        "description": "Database sku tier for MySQL server"
+      }
+    },
+    "mysqlSkuName": {
+      "type": "string",
+      "metadata": {
+        "description": "Database sku name for MySQL server"
+      }
+    },
+    "mysqlVersion": {
+      "type": "string",
+      "metadata": {
+        "description": "Database version for MySQL server"
+      }
+    },
+    "mysqlStorageSizeGB": {
+      "type": "int",
+      "metadata": {
+        "description": "Database storage size in GB for MySQL server"
+      }
+    },
+    "mysqlBackupRetentionDays": {
+      "type": "int",
+      "metadata": {
+        "description": "Database backup retention days for MySQL server"
+      }
+    },
+    "mysqlHighAvailabilityMode": {
+      "type": "string",
+      "metadata": {
+        "description": "Database high availability mode for MySQL server"
+      }
+    },
+    "appServiceSkuName": {
+      "type": "string",
+      "metadata": {
+        "description": "App Service Plan SKU"
+      }
+    },
+    "appServiceSkuTier": {
+      "type": "string",
+      "metadata": {
+        "description": "App Service Plan tier"
+      }
+    },
+    "linuxFxVersion": {
+      "type": "string",
+      "metadata": {
+        "description": "Linux runtime stack"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('network-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "vnetAddressPrefix": {
+            "value": "[parameters('vnetAddressPrefix')]"
+          },
+          "appServiceSubnetPrefix": {
+            "value": "[parameters('appServiceSubnetPrefix')]"
+          },
+          "mysqlSubnetPrefix": {
+            "value": "[parameters('mysqlSubnetPrefix')]"
+          },
+          "privateEndpointSubnetPrefix": {
+            "value": "[parameters('privateEndpointSubnetPrefix')]"
+          },
+          "appNsgId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.appNsgId.value]"
+          },
+          "mysqlNsgId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.mysqlNsgId.value]"
+          },
+          "privateEndpointNsgId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.privateEndpointNsgId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "7151313544965285413"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string",
+              "metadata": {
+                "description": "Workload name"
+              }
+            },
+            "environment": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment"
+              }
+            },
+            "instance": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource instance number"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Common resource tags"
+              }
+            },
+            "vnetAddressPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet address space"
+              }
+            },
+            "appServiceSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "App Service integration subnet prefix"
+              }
+            },
+            "mysqlSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "MySQL delegated subnet prefix"
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoint subnet prefix"
+              }
+            },
+            "appNsgId": {
+              "type": "string",
+              "metadata": {
+                "description": "NSG resource ID for App Service integration subnet"
+              }
+            },
+            "mysqlNsgId": {
+              "type": "string",
+              "metadata": {
+                "description": "NSG resource ID for MySQL subnet"
+              }
+            },
+            "privateEndpointNsgId": {
+              "type": "string",
+              "metadata": {
+                "description": "NSG resource ID for Private Endpoint subnet"
+              }
+            }
+          },
+          "variables": {
+            "vnetName": "[format('vnet-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2023-02-01",
+              "name": "[variables('vnetName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressPrefix')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "snet-appservice-integration",
+                    "properties": {
+                      "addressPrefix": "[parameters('appServiceSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[parameters('appNsgId')]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "appservice-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.Web/serverFarms"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "snet-mysql",
+                    "properties": {
+                      "addressPrefix": "[parameters('mysqlSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[parameters('mysqlNsgId')]"
+                      },
+                      "delegations": [
+                        {
+                          "name": "mysql-delegation",
+                          "properties": {
+                            "serviceName": "Microsoft.DBforMySQL/flexibleServers"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "snet-private-endpoints",
+                    "properties": {
+                      "addressPrefix": "[parameters('privateEndpointSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[parameters('privateEndpointNsgId')]"
+                      },
+                      "privateEndpointNetworkPolicies": "Enabled"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "vnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            },
+            "vnetName": {
+              "type": "string",
+              "value": "[variables('vnetName')]"
+            },
+            "mysqlSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-mysql')]"
+            },
+            "appserviceSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-appservice-integration')]"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'snet-private-endpoints')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('nsg-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "appServiceSubnetPrefix": {
+            "value": "[parameters('appServiceSubnetPrefix')]"
+          },
+          "mysqlSubnetPrefix": {
+            "value": "[parameters('mysqlSubnetPrefix')]"
+          },
+          "privateEndpointSubnetPrefix": {
+            "value": "[parameters('privateEndpointSubnetPrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "14809840286746006594"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string",
+              "metadata": {
+                "description": "Workload name"
+              }
+            },
+            "environment": {
+              "type": "string",
+              "metadata": {
+                "description": "Deployment environment"
+              }
+            },
+            "instance": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource instance number"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Common resource tags"
+              }
+            },
+            "appServiceSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "App Service integration subnet prefix"
+              }
+            },
+            "mysqlSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "MySQL subnet prefix"
+              }
+            },
+            "privateEndpointSubnetPrefix": {
+              "type": "string",
+              "metadata": {
+                "description": "Private Endpoint subnet prefix"
+              }
+            }
+          },
+          "variables": {
+            "appNSGName": "[format('nsg-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "mysqlNSGName": "[format('nsg-mysql-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "privateEndpointNSGName": "[format('nsg-privateendpoint-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2023-02-01",
+              "name": "[variables('appNSGName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-MySQL",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "3306",
+                      "sourceAddressPrefix": "[parameters('appServiceSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('mysqlSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-PrivateEndpoints-HTTPS",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Outbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "443",
+                      "sourceAddressPrefix": "[parameters('appServiceSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('privateEndpointSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Deny-Other-VNet-Outbound",
+                    "properties": {
+                      "priority": 4000,
+                      "direction": "Outbound",
+                      "access": "Deny",
+                      "protocol": "*",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "*",
+                      "sourceAddressPrefix": "*",
+                      "destinationAddressPrefix": "VirtualNetwork"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2023-02-01",
+              "name": "[variables('mysqlNSGName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-AppService-MySQL",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "3306",
+                      "sourceAddressPrefix": "[parameters('appServiceSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('mysqlSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Allow-MySQL-Subnet-MySQL",
+                    "properties": {
+                      "priority": 110,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "3306",
+                      "sourceAddressPrefix": "[parameters('mysqlSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('mysqlSubnetPrefix')]"
+                    }
+                  },
+                  {
+                    "name": "Deny-Other-VNet-MySQL",
+                    "properties": {
+                      "priority": 4000,
+                      "direction": "Inbound",
+                      "access": "Deny",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "3306",
+                      "sourceAddressPrefix": "VirtualNetwork",
+                      "destinationAddressPrefix": "[parameters('mysqlSubnetPrefix')]"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2023-11-01",
+              "name": "[variables('privateEndpointNSGName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-AppService-HTTPS",
+                    "properties": {
+                      "priority": 100,
+                      "direction": "Inbound",
+                      "access": "Allow",
+                      "protocol": "Tcp",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "443",
+                      "sourceAddressPrefix": "[parameters('appServiceSubnetPrefix')]",
+                      "destinationAddressPrefix": "[parameters('privateEndpointSubnetPrefix')]"
+                    }
+                  }
+                ]
+              }
+            }
+          ],
+          "outputs": {
+            "appNsgId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('appNSGName'))]"
+            },
+            "mysqlNsgId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('mysqlNSGName'))]"
+            },
+            "privateEndpointNsgId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('privateEndpointNSGName'))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('privatedns-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "vnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.vnetId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "18025836624515629534"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object"
+            },
+            "vnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "VNet ID form network.bicep. Therefor privateDNS.bicep must be deployed after network.bicep"
+              }
+            }
+          },
+          "variables": {
+            "mysqlPrivateDnsZoneName": "[format('{0}-{1}.private.mysql.database.azure.com', parameters('workloadName'), parameters('environment'))]",
+            "keyVaultPrivateDnsZoneName": "privatelink.vaultcore.azure.net"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[variables('mysqlPrivateDnsZoneName')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', variables('mysqlPrivateDnsZoneName'), format('link-{0}-{1}-vnet', parameters('workloadName'), parameters('environment')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('mysqlPrivateDnsZoneName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones",
+              "apiVersion": "2024-06-01",
+              "name": "[variables('keyVaultPrivateDnsZoneName')]",
+              "location": "global",
+              "tags": "[parameters('tags')]"
+            },
+            {
+              "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+              "apiVersion": "2024-06-01",
+              "name": "[format('{0}/{1}', variables('keyVaultPrivateDnsZoneName'), format('link-{0}-{1}-vnet', parameters('workloadName'), parameters('environment')))]",
+              "location": "global",
+              "properties": {
+                "registrationEnabled": false,
+                "resolutionPolicy": "Default",
+                "virtualNetwork": {
+                  "id": "[parameters('vnetId')]"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "PrivateDnsZonemysqlId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('mysqlPrivateDnsZoneName'))]"
+            },
+            "privateDnsZoneName": {
+              "type": "string",
+              "value": "[variables('mysqlPrivateDnsZoneName')]"
+            },
+            "privateDnsZoneKeyVaultId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateDnsZones', variables('keyVaultPrivateDnsZoneName'))]"
+            },
+            "privateDnsZoneKeyVaultName": {
+              "type": "string",
+              "value": "[variables('keyVaultPrivateDnsZoneName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('mysql-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "mysqlSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.mysqlSubnetId.value]"
+          },
+          "privateDnsZoneMysqlId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment'))), '2025-04-01').outputs.PrivateDnsZonemysqlId.value]"
+          },
+          "mysqlAdminUsername": {
+            "value": "[parameters('mysqlAdminUsername')]"
+          },
+          "mysqlAdminPassword": {
+            "value": "[parameters('mysqlAdminPassword')]"
+          },
+          "mysqlSkuName": {
+            "value": "[parameters('mysqlSkuName')]"
+          },
+          "mysqlSkuTier": {
+            "value": "[parameters('mysqlSkuTier')]"
+          },
+          "mysqlVersion": {
+            "value": "[parameters('mysqlVersion')]"
+          },
+          "storageSizeGB": {
+            "value": "[parameters('mysqlStorageSizeGB')]"
+          },
+          "backupRetentionDays": {
+            "value": "[parameters('mysqlBackupRetentionDays')]"
+          },
+          "highAvailabilityMode": {
+            "value": "[parameters('mysqlHighAvailabilityMode')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "6983665976418293975"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "instance": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object"
+            },
+            "mysqlSubnetId": {
+              "type": "string"
+            },
+            "privateDnsZoneMysqlId": {
+              "type": "string"
+            },
+            "mysqlAdminUsername": {
+              "type": "string"
+            },
+            "mysqlAdminPassword": {
+              "type": "securestring"
+            },
+            "mysqlSkuName": {
+              "type": "string"
+            },
+            "mysqlSkuTier": {
+              "type": "string"
+            },
+            "mysqlVersion": {
+              "type": "string"
+            },
+            "storageSizeGB": {
+              "type": "int"
+            },
+            "backupRetentionDays": {
+              "type": "int"
+            },
+            "highAvailabilityMode": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "mysqlServerName": "[format('mysql-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.DBforMySQL/flexibleServers",
+              "apiVersion": "2024-12-30",
+              "name": "[variables('mysqlServerName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('mysqlSkuName')]",
+                "tier": "[parameters('mysqlSkuTier')]"
+              },
+              "properties": {
+                "administratorLogin": "[parameters('mysqlAdminUsername')]",
+                "administratorLoginPassword": "[parameters('mysqlAdminPassword')]",
+                "version": "[parameters('mysqlVersion')]",
+                "network": {
+                  "delegatedSubnetResourceId": "[parameters('mysqlSubnetId')]",
+                  "privateDnsZoneResourceId": "[parameters('privateDnsZoneMysqlId')]",
+                  "publicNetworkAccess": "Disabled"
+                },
+                "backup": {
+                  "backupRetentionDays": "[parameters('backupRetentionDays')]",
+                  "geoRedundantBackup": "Disabled"
+                },
+                "highAvailability": {
+                  "mode": "[parameters('highAvailabilityMode')]"
+                },
+                "storage": {
+                  "storageSizeGB": "[parameters('storageSizeGB')]",
+                  "autoGrow": "Enabled",
+                  "autoIoScaling": "Disabled"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "mysqlServerId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName'))]"
+            },
+            "mysqlServerName": {
+              "type": "string",
+              "value": "[variables('mysqlServerName')]"
+            },
+            "mysqlFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName')), '2024-12-30').fullyQualifiedDomainName]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('keyvault-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "privateEndpointSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+          },
+          "privateDnsZoneKeyVaultId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment'))), '2025-04-01').outputs.privateDnsZoneKeyVaultId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "4601933435622531566"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "instance": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object"
+            },
+            "privateEndpointSubnetId": {
+              "type": "string"
+            },
+            "privateDnsZoneKeyVaultId": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "keyVaultName": "[format('kv-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "keyVaultPrivateEndpointName": "[format('pe-{0}-{1}-{2}-kv', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.KeyVault/vaults",
+              "apiVersion": "2024-11-01",
+              "name": "[variables('keyVaultName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "tenantId": "[subscription().tenantId]",
+                "sku": {
+                  "family": "A",
+                  "name": "standard"
+                },
+                "enableRbacAuthorization": true,
+                "enableSoftDelete": true,
+                "softDeleteRetentionInDays": 90,
+                "publicNetworkAccess": "Disabled",
+                "accessPolicies": []
+              }
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints",
+              "apiVersion": "2024-05-01",
+              "name": "[variables('keyVaultPrivateEndpointName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "subnet": {
+                  "id": "[parameters('privateEndpointSubnetId')]"
+                },
+                "privateLinkServiceConnections": [
+                  {
+                    "name": "keyvault-connection",
+                    "properties": {
+                      "privateLinkServiceId": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]",
+                      "groupIds": [
+                        "vault"
+                      ],
+                      "privateLinkServiceConnectionState": {
+                        "status": "Approved",
+                        "description": "Connection for the Key Vault private endpoint",
+                        "actionsRequired": "None"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}/{1}', variables('keyVaultPrivateEndpointName'), 'default')]",
+              "properties": {
+                "privateDnsZoneConfigs": [
+                  {
+                    "name": "keyvault-dns",
+                    "properties": {
+                      "privateDnsZoneId": "[parameters('privateDnsZoneKeyVaultId')]"
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('keyVaultPrivateEndpointName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "keyVaultId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName'))]"
+            },
+            "keyVaultName": {
+              "type": "string",
+              "value": "[variables('keyVaultName')]"
+            },
+            "keyVaultUri": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.KeyVault/vaults', variables('keyVaultName')), '2024-11-01').vaultUri]"
+            },
+            "keyVaultPrivateEndpointId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Network/privateEndpoints', variables('keyVaultPrivateEndpointName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('appservice-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          },
+          "appServiceSkuName": {
+            "value": "[parameters('appServiceSkuName')]"
+          },
+          "appServiceSkuTier": {
+            "value": "[parameters('appServiceSkuTier')]"
+          },
+          "linuxFxVersion": {
+            "value": "[parameters('linuxFxVersion')]"
+          },
+          "appServiceSubnetId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.appserviceSubnetId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "11989565781818492078"
+            }
+          },
+          "parameters": {
+            "workloadName": {
+              "type": "string"
+            },
+            "environment": {
+              "type": "string"
+            },
+            "instance": {
+              "type": "string"
+            },
+            "location": {
+              "type": "string"
+            },
+            "tags": {
+              "type": "object"
+            },
+            "appServiceSkuName": {
+              "type": "string"
+            },
+            "appServiceSkuTier": {
+              "type": "string"
+            },
+            "linuxFxVersion": {
+              "type": "string"
+            },
+            "appServiceSubnetId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resoruce ID of the app service vnet intergration subnet"
+              }
+            }
+          },
+          "variables": {
+            "appServicePlanName": "[format('asp-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "dataApiName": "[format('app-{0}-data-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "authApiName": "[format('app-{0}-auth-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2024-11-01",
+              "name": "[variables('appServicePlanName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "linux",
+              "sku": {
+                "name": "[parameters('appServiceSkuName')]",
+                "tier": "[parameters('appServiceSkuTier')]"
+              },
+              "properties": {
+                "reserved": true,
+                "perSiteScaling": false,
+                "zoneRedundant": false
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2024-11-01",
+              "name": "[variables('dataApiName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "app,linux",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "httpsOnly": true,
+                "publicNetworkAccess": "Enabled",
+                "clientAffinityEnabled": false,
+                "siteConfig": {
+                  "linuxFxVersion": "[parameters('linuxFxVersion')]",
+                  "vnetRouteAllEnabled": false,
+                  "alwaysOn": true,
+                  "http20Enabled": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "scmMinTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "ASPNETCORE_ENVIRONMENT",
+                      "value": "Production"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/networkConfig",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'virtualNetwork')]",
+              "properties": {
+                "subnetResourceId": "[parameters('appServiceSubnetId')]",
+                "swiftSupported": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2024-11-01",
+              "name": "[variables('authApiName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "app,linux",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "httpsOnly": true,
+                "publicNetworkAccess": "Enabled",
+                "clientAffinityEnabled": false,
+                "siteConfig": {
+                  "linuxFxVersion": "[parameters('linuxFxVersion')]",
+                  "vnetRouteAllEnabled": false,
+                  "alwaysOn": true,
+                  "http20Enabled": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "scmMinTlsVersion": "1.2",
+                  "appSettings": [
+                    {
+                      "name": "ASPNETCORE_ENVIRONMENT",
+                      "value": "Production"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/networkConfig",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('authApiName'), 'virtualNetwork')]",
+              "properties": {
+                "subnetResourceId": "[parameters('appServiceSubnetId')]",
+                "swiftSupported": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('authApiName'), 'ftp')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('authApiName'), 'scm')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'ftp')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'scm')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "appServicePlanId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+            },
+            "appServicePlanName": {
+              "type": "string",
+              "value": "[variables('appServicePlanName')]"
+            },
+            "authApiId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Web/sites', variables('authApiName'))]"
+            },
+            "authApiName": {
+              "type": "string",
+              "value": "[variables('authApiName')]"
+            },
+            "authApiHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', variables('authApiName')), '2024-11-01').defaultHostName]"
+            },
+            "dataApiId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+            },
+            "dataApiName": {
+              "type": "string",
+              "value": "[variables('dataApiName')]"
+            },
+            "dataApiHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', variables('dataApiName')), '2024-11-01').defaultHostName]"
+            },
+            "authApiPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', variables('authApiName')), '2024-11-01', 'full').identity.principalId]"
+            },
+            "dataApiPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', variables('dataApiName')), '2024-11-01', 'full').identity.principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('rbac-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "keyVaultName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('keyvault-{0}', parameters('environment'))), '2025-04-01').outputs.keyVaultName.value]"
+          },
+          "authApiPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment'))), '2025-04-01').outputs.authApiPrincipalId.value]"
+          },
+          "dataApiPrincipalId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment'))), '2025-04-01').outputs.dataApiPrincipalId.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "7688241996537624613"
+            }
+          },
+          "parameters": {
+            "keyVaultName": {
+              "type": "string"
+            },
+            "authApiPrincipalId": {
+              "type": "string"
+            },
+            "dataApiPrincipalId": {
+              "type": "string"
+            }
+          },
+          "variables": {
+            "keyVaultSecretsUserRoleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('authApiPrincipalId'), variables('keyVaultSecretsUserRoleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[variables('keyVaultSecretsUserRoleDefinitionId')]",
+                "principalId": "[parameters('authApiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('dataApiPrincipalId'), variables('keyVaultSecretsUserRoleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[variables('keyVaultSecretsUserRoleDefinitionId')]",
+                "principalId": "[parameters('dataApiPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment')))]",
+        "[resourceId('Microsoft.Resources/deployments', format('keyvault-{0}', parameters('environment')))]"
+      ]
+    }
+  ]
+}
