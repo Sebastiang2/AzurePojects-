@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.47.16.16243",
-      "templateHash": "1388859777546835895"
+      "templateHash": "14318547052330166588"
     }
   },
   "parameters": {
@@ -131,6 +131,36 @@
       "type": "string",
       "metadata": {
         "description": "Linux runtime stack"
+      }
+    },
+    "staticWebAppName": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App name"
+      }
+    },
+    "staticWebAppLocation": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App region. Separate from location because Static Web Apps is not available in every region"
+      }
+    },
+    "staticWebAppSkuName": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App SKU name"
+      }
+    },
+    "staticWebAppSkuTier": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App SKU tier"
+      }
+    },
+    "staticWebAppTags": {
+      "type": "object",
+      "metadata": {
+        "description": "Static Web App resource tags"
       }
     }
   },
@@ -1427,6 +1457,118 @@
         "[resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment')))]",
         "[resourceId('Microsoft.Resources/deployments', format('keyvault-{0}', parameters('environment')))]"
       ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[format('staticwebapp-{0}', parameters('environment'))]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "name": {
+            "value": "[parameters('staticWebAppName')]"
+          },
+          "location": {
+            "value": "[parameters('staticWebAppLocation')]"
+          },
+          "skuName": {
+            "value": "[parameters('staticWebAppSkuName')]"
+          },
+          "skuTier": {
+            "value": "[parameters('staticWebAppSkuTier')]"
+          },
+          "tags": {
+            "value": "[parameters('staticWebAppTags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "15478211762479437241"
+            }
+          },
+          "parameters": {
+            "name": {
+              "type": "string",
+              "metadata": {
+                "description": "Static Web App name"
+              }
+            },
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for the Static Web App. Set independently of the resource group location because Static Web Apps is only available in a limited set of regions"
+              }
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "Free",
+              "allowedValues": [
+                "Free",
+                "Standard"
+              ],
+              "metadata": {
+                "description": "Static Web App SKU name"
+              }
+            },
+            "skuTier": {
+              "type": "string",
+              "defaultValue": "Free",
+              "allowedValues": [
+                "Free",
+                "Standard"
+              ],
+              "metadata": {
+                "description": "Static Web App SKU tier"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Resource tags"
+              }
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/staticSites",
+              "apiVersion": "2024-11-01",
+              "name": "[parameters('name')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]",
+                "tier": "[parameters('skuTier')]"
+              },
+              "properties": {
+                "allowConfigFileUpdates": true,
+                "stagingEnvironmentPolicy": "Enabled"
+              }
+            }
+          ],
+          "outputs": {
+            "staticWebAppId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Web/staticSites', parameters('name'))]"
+            },
+            "staticWebAppName": {
+              "type": "string",
+              "value": "[parameters('name')]"
+            },
+            "staticWebAppDefaultHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/staticSites', parameters('name')), '2024-11-01').defaultHostname]"
+            }
+          }
+        }
+      }
     }
   ]
 }

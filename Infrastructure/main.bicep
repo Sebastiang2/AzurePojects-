@@ -77,6 +77,23 @@ param appServiceSkuTier string
 @description('Linux runtime stack')
 param linuxFxVersion string
 
+// Static Web App parameters
+
+@description('Static Web App name')
+param staticWebAppName string
+
+@description('Static Web App region. Separate from location because Static Web Apps is not available in every region')
+param staticWebAppLocation string
+
+@description('Static Web App SKU name')
+param staticWebAppSkuName string
+
+@description('Static Web App SKU tier')
+param staticWebAppSkuTier string
+
+@description('Static Web App resource tags')
+param staticWebAppTags object
+
 // Network module
 module network 'modules/network.bicep' = {
   name: 'network-${environment}'
@@ -213,5 +230,19 @@ module rbac 'modules/rbac.bicep' = {
 
     authApiPrincipalId: appService.outputs.authApiPrincipalId
     dataApiPrincipalId: appService.outputs.dataApiPrincipalId
+  }
+}
+
+
+// Static Web App module. Provisions the resource only; the app repository deploys the content.
+module staticWebApp 'modules/staticwebapp.bicep' = {
+  name: 'staticwebapp-${environment}'
+
+  params: {
+    name: staticWebAppName
+    location: staticWebAppLocation
+    skuName: staticWebAppSkuName
+    skuTier: staticWebAppSkuTier
+    tags: staticWebAppTags
   }
 }
