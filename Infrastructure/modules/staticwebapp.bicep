@@ -24,6 +24,16 @@ param skuTier string = 'Free'
 param tags object
 
 
+@description('GitHub repository that owns the Static Web App deployment')
+param repositoryUrl string
+
+@description('Repository branch deployed to production')
+param branch string = 'main'
+
+@description('Repository provider')
+param provider string = 'GitHub'
+
+
 // Infrastructure only. repositoryUrl, branch, repositoryToken and buildProperties are intentionally
 // not set: the application repository owns its own build and deployment pipeline.
 resource staticWebApp 'Microsoft.Web/staticSites@2024-11-01' = {
@@ -37,9 +47,18 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-11-01' = {
   }
 
   properties: {
-    allowConfigFileUpdates: true
-    stagingEnvironmentPolicy: 'Enabled'
-  }
+      allowConfigFileUpdates: true
+      stagingEnvironmentPolicy: 'Enabled'
+
+      repositoryUrl: repositoryUrl
+      branch: branch
+      provider: provider
+
+      buildProperties: {
+    // The application repository already owns its GitHub Actions workflow.
+      skipGithubActionWorkflowGeneration: true
+    }
+    }
 }
 
 output staticWebAppId string = staticWebApp.id

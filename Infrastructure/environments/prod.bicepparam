@@ -22,11 +22,11 @@ param privateEndpointSubnetPrefix = '10.20.3.0/24'
 // database configuration
 param mysqlAdminUsername = 'inviadmin'
 
-param mysqlAdminPassword = 'Cetchapp123'
+param mysqlAdminPassword = readEnvironmentVariable('MYSQL_ADMIN_PASSWORD')
 
 param mysqlSkuTier = 'Burstable'
 
-param mysqlSkuName = 'Standard_B1ms'
+param mysqlSkuName = 'Standard_B2s'
 
 param mysqlVersion = '8.0.21'
 
@@ -41,7 +41,6 @@ param appServiceSkuName = 'P0v3'
 param appServiceSkuTier = 'PremiumV3'
 
 param linuxFxVersion = 'DOTNETCORE|10.0'
-
 // Static Web App configuration (CetchApp app-web)
 // eastus2: Static Web Apps is not available in swedencentral
 param staticWebAppName = 'swa-cetchapp-app-web-prodtest-001'
@@ -54,3 +53,23 @@ param staticWebAppTags = {
   component: 'app-web'
   'managed-by': 'bicep'
 }
+
+param databaseName = 'invi'
+
+// Environment variables
+
+param appleBundleId = 'com.cetchapp.cetchapp'
+param appleKeyId = '9Y63M5782Z'
+param appleTeamId = 'MVD9YZ986F'
+
+param firebaseAuthEmail = 'backend@cetchapp.com'
+param firebaseBucket = 'cetchapp-8b5a6.appspot.com'
+
+param frontendBaseUrl = 'https://app.cetchapp.com'
+param inviteBaseUrl = 'https://cetchapp.com'
+
+param webDraftsEnabled = true
+
+
+param staticWebAppRepositoryUrl = 'https://github.com/CetchApp/cetchapp-app-web'
+param staticWebAppBranch = 'main'

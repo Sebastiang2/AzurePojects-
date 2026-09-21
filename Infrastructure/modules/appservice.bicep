@@ -10,11 +10,43 @@ param location string
 
 param tags object
 
-param appServiceSkuName string  
+param appServiceSkuName string
 
 param appServiceSkuTier string
 
 param linuxFxVersion string
+
+
+param databaseHost string
+param databaseName string
+param databaseUser string
+
+param jwtIssuer string
+param jwtAudience string
+
+param keyVaultName string
+
+
+// Con
+
+param appleBundleId string
+param appleKeyId string
+param appleTeamId string
+
+param firebaseAuthEmail string
+param firebaseBucket string
+
+param frontendBaseUrl string
+param inviteBaseUrl string
+
+param webDraftsEnabled bool
+
+
+@secure()
+param authAppInsightsConnectionString string
+
+@secure()
+param dataAppInsightsConnectionString string
 
 
 
@@ -35,7 +67,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   location: location
   tags: tags
 
-  
+
   kind: 'linux'
 
   sku: {
@@ -48,7 +80,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
     reserved: true
     perSiteScaling: false
     zoneRedundant: false
-    
+
   }
 }
 
@@ -75,13 +107,13 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
 
     clientAffinityEnabled: false
 
-    
-    
+
+
 
     siteConfig: {
       linuxFxVersion: linuxFxVersion
 
-      vnetRouteAllEnabled: false
+      vnetRouteAllEnabled: true
 
       alwaysOn: true
       http20Enabled: true
@@ -93,17 +125,66 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
 
       scmMinTlsVersion: '1.2'
 
-      appSettings: [
-        {
-          name: 'ASPNETCORE_ENVIRONMENT'
-          value: 'Production'
-        }
-      ]
+
     }
   }
 }
 
-// intergration 
+// app service secrets
+resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
+  parent: dataApi
+  name: 'appsettings'
+
+  properties: {
+   ASPNETCORE_ENVIRONMENT: 'Production'
+    Urls: 'http://*:8080'
+
+    Database__Host: databaseHost
+    Database__Name: databaseName
+    Database__Port: '3306'
+    Database__User: databaseUser
+    Database__SslMode: 'Required'
+
+
+    Database__Password: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=database-password)'
+
+    Jwt__Issuer: jwtIssuer
+    Jwt__Audience: jwtAudience
+    Jwt__SigningKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=jwt-signing-key)'
+
+    AuthApiUrl: 'https://${authApi.properties.defaultHostName}'
+
+    // Existing secret references
+    OpenAI__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=openai-api-key)'
+    GoogleMaps__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=googlemaps-api-key)'
+    Firebase__AuthPassword: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=firebase-auth-password)'
+    Firebase__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=firebase-api-key)'
+    APPLE_APNS_PRIVATE_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=apple-apns-private-key)'
+    ResendApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=resend-api-key)'
+    Discord__Webhooks__0: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=discord-webhook-0)'
+    Discord__Webhooks__1: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=discord-webhook-1)'
+
+
+    APPLICATIONINSIGHTS_CONNECTION_STRING: dataAppInsightsConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    XDT_MicrosoftApplicationInsights_Mode: 'recommended'
+    XDT_MicrosoftApplicationInsights_PreemptSdk: '1'
+
+    APPLE_BUNDLE_ID: appleBundleId
+    APPLE_KEY_ID: appleKeyId
+    APPLE_TEAM_ID: appleTeamId
+
+    Firebase__AuthEmail: firebaseAuthEmail
+    Firebase__Bucket: firebaseBucket
+
+    FrontendBaseUrl: frontendBaseUrl
+    InviteBaseUrl: inviteBaseUrl
+
+    WebDrafts__Enabled: string(webDraftsEnabled)
+  }
+}
+
+// intergration
 resource dataApiVnetIntegration 'Microsoft.Web/sites/networkConfig@2024-11-01' = {
   parent: dataApi
   name: 'virtualNetwork'
@@ -137,7 +218,7 @@ resource authApi 'Microsoft.Web/sites@2024-11-01' = {
     siteConfig: {
       linuxFxVersion: linuxFxVersion
 
-      vnetRouteAllEnabled: false
+      vnetRouteAllEnabled: true
 
       alwaysOn: true
       http20Enabled: true
@@ -147,14 +228,38 @@ resource authApi 'Microsoft.Web/sites@2024-11-01' = {
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
 
-      appSettings: [
-        {
-          name: 'ASPNETCORE_ENVIRONMENT'
-          value: 'Production'
-        }
-      ]
+
     }
   }
+}
+
+
+// auth-api secrets
+resource authApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
+  parent: authApi
+  name: 'appsettings'
+
+  properties: {
+    ASPNETCORE_ENVIRONMENT: 'Production'
+    Urls: 'http://*:8080'
+
+    Database__Host: databaseHost
+    Database__Name: databaseName
+    Database__Port: '3306'
+    Database__User: databaseUser
+    Database__SslMode: 'Required'
+
+    Database__Password: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=database-password)'
+
+    Jwt__Issuer: jwtIssuer
+    Jwt__Audience: jwtAudience
+    Jwt__SigningKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=jwt-signing-key)'
+
+    APPLICATIONINSIGHTS_CONNECTION_STRING: authAppInsightsConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    XDT_MicrosoftApplicationInsights_Mode: 'recommended'
+    XDT_MicrosoftApplicationInsights_PreemptSdk: '1'
+}
 }
 
 // intergration
@@ -168,7 +273,7 @@ resource authApiVnetIntegration 'Microsoft.Web/sites/networkConfig@2024-11-01' =
   }
 }
 
-// Polcies?? 
+// Polcies??
 resource authApiFtpPolicy 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2024-11-01' = {
   parent: authApi
   name: 'ftp'
@@ -217,9 +322,7 @@ output dataApiName string = dataApi.name
 output dataApiHostname string = dataApi.properties.defaultHostName
 
 
-// prinacible 
+// prinacible
 
 output authApiPrincipalId string = authApi.identity.principalId
 output dataApiPrincipalId string = dataApi.identity.principalId
-
-
