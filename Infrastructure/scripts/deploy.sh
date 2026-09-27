@@ -13,7 +13,11 @@ echo
 # --------------------------------------------------
 
 
-RESOURCE_GROUP="rg-cetchapp-prod-swc-001-test1"
+# CetchApp Prod. Pinned explicitly so the script can never inherit an
+# ambient subscription and deploy production into the dev subscription.
+SUBSCRIPTION_ID="563af248-8461-42a9-8121-e350e48ca7b6"
+
+RESOURCE_GROUP="rg-invi-prod-swc-001"
 LOCATION="swedencentral"
 DEPLOYMENT_NAME="invi-prod-infrastructure-001"
 AUTH_APP="app-invi-auth-api-prod-001"
@@ -50,6 +54,7 @@ AUTH_GITHUB_SUBJECT="repo:CetchApp@262199775/cetchapp-auth-api@1171937595:enviro
 DATA_GITHUB_SUBJECT="repo:CetchApp@262199775/cetchapp-data-api@1222823213:environment:prod-migration"
 
 echo "Deployment configuration:"
+echo "Subscription:   $SUBSCRIPTION_ID"
 echo "Resource group: $RESOURCE_GROUP"
 echo "Location:       $LOCATION"
 
@@ -82,11 +87,56 @@ echo "Azure login OK."
 
 
 echo
+echo "Selecting target subscription..."
+
+az account set --subscription "$SUBSCRIPTION_ID"
+
+ACTIVE_SUBSCRIPTION=$(az account show --query "id" --output tsv)
+
+if [[ "$ACTIVE_SUBSCRIPTION" != "$SUBSCRIPTION_ID" ]]; then
+  echo "ERROR: Active subscription does not match the target subscription."
+  echo "Expected: $SUBSCRIPTION_ID"
+  echo "Actual:   $ACTIVE_SUBSCRIPTION"
+  exit 1
+fi
+
+echo "Subscription selected and verified."
+
+
+echo
 echo "Current Azure subscription:"
 
 az account show \
   --query "{Name:name, SubscriptionId:id}" \
   --output table
+
+
+echo
+echo "Checking resource group..."
+
+if ! az group show \
+  --name "$RESOURCE_GROUP" \
+  --only-show-errors \
+  --output none 2>/dev/null; then
+
+  echo "ERROR: Resource group not found: $RESOURCE_GROUP"
+  exit 1
+fi
+
+echo "Resource group found."
+
+
+echo
+echo "Checking MySQL admin password..."
+
+if [[ -z "${MYSQL_ADMIN_PASSWORD:-}" ]]; then
+  echo "ERROR: MYSQL_ADMIN_PASSWORD is not set."
+  echo "The parameter file reads it with readEnvironmentVariable()."
+  echo "Run: export MYSQL_ADMIN_PASSWORD='<password>'"
+  exit 1
+fi
+
+echo "MySQL admin password found."
 
 
 echo

@@ -43,13 +43,13 @@ param appServiceSkuTier = 'PremiumV3'
 param linuxFxVersion = 'DOTNETCORE|10.0'
 // Static Web App configuration (CetchApp app-web)
 // eastus2: Static Web Apps is not available in swedencentral
-param staticWebAppName = 'swa-cetchapp-app-web-prodtest-001'
+param staticWebAppName = 'swa-invi-app-web-prod-001'
 param staticWebAppLocation = 'eastus2'
 param staticWebAppSkuName = 'Free'
 param staticWebAppSkuTier = 'Free'
 param staticWebAppTags = {
   project: 'CetchApp'
-  environment: 'prodtest'
+  environment: 'prod'
   component: 'app-web'
   'managed-by': 'bicep'
 }
