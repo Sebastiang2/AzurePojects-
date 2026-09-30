@@ -111,7 +111,8 @@ Resources are deployed in this order to satisfy dependencies:
 │       ├── keyvault.bicep             # Key Vault with private endpoint
 │       ├── appservice.bicep           # App Service Plan + Auth API + Data API
 │       ├── rbac.bicep                 # RBAC assignments for Key Vault access
-│       └── staticwebapp.bicep         # Static Web App infrastructure provisioning
+│       ├── staticwebapp.bicep         # Static Web App infrastructure provisioning
+│       └── monitoring.bicep           # Monitoring module (empty placeholder)
 └── .github/
     └── copilot-instructions.md         # Bicep conventions and deployment guidance
 ```
@@ -358,7 +359,7 @@ Adjust these ranges in the parameter file if they conflict with existing network
 ## Known Issues and Gaps
 
 - **`Infrastructure/README.md`**: Currently empty; should contain module-level documentation
-- **`monitoring.bicep`**: Referenced in planning discussions but not yet implemented (no Application Insights, Log Analytics, or alerting)
+- **`Infrastructure/modules/monitoring.bicep`**: File exists but is empty; no monitoring resources are deployed (no Application Insights, Log Analytics, or alerting)
 - **Parameter file security**: Sensitive values should be externalized (use `--parameters` CLI overrides or Azure Key Vault references)
 
 ## Maintenance and Updates
