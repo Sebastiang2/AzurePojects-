@@ -138,6 +138,21 @@ fi
 
 echo "MySQL admin password found."
 
+echo
+echo "Checking RevenueCat settings..."
+
+for variable in REVENUECAT_SECRET_API_KEY REVENUECAT_WEBHOOK_AUTHORIZATION; do
+  if [[ -z "${!variable:-}" ]]; then
+    echo "ERROR: $variable is not set."
+    echo "The parameter file reads it with readEnvironmentVariable(); the Data API's"
+    echo "App Setting would otherwise be replaced by an empty value."
+    echo "Copy the current value from app-invi-data-api-prod-001 and run: export $variable='<value>'"
+    exit 1
+  fi
+done
+
+echo "RevenueCat settings found."
+
 
 echo
 echo "Step 1 completed successfully."
