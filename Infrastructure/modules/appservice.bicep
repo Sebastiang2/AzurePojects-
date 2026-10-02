@@ -55,6 +55,9 @@ param revenueCatSecretApiKey string
 param revenueCatWebhookAuthorization string
 
 
+param authAppInsightsId string
+param dataAppInsightsId string
+
 @secure()
 param authAppInsightsConnectionString string
 
@@ -73,6 +76,13 @@ var authApiName= 'app-${workloadName}-auth-api-${environment}-${instance}'
 // in each API). The vault is private and App Service does not resolve the
 // @Microsoft.KeyVault references itself, so without this the APIs get no secrets.
 var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/'
+
+// The portal links a site to its Application Insights resource with this tag.
+// Kept with the exact value the portal wrote (lower-case provider namespace),
+// since `tags` replaces every tag on the site.
+var appInsightsLinkTag = 'hidden-link: /app-insights-resource-id'
+var dataApiTags = union(tags, { '${appInsightsLinkTag}': replace(dataAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
+var authApiTags = union(tags, { '${appInsightsLinkTag}': replace(authAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
 
 @description('Resoruce ID of the app service vnet intergration subnet')
 param appServiceSubnetId string
@@ -109,7 +119,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
 resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
   name: dataApiName
   location: location
-  tags: tags
+  tags: dataApiTags
 
   kind: 'app,linux'
 
@@ -234,7 +244,7 @@ resource dataApiVnetIntegration 'Microsoft.Web/sites/networkConfig@2024-11-01' =
 resource authApi 'Microsoft.Web/sites@2024-11-01' = {
   name: authApiName
   location: location
-  tags: tags
+  tags: authApiTags
 
   kind: 'app,linux'
 

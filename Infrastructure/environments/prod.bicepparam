@@ -70,7 +70,9 @@ param frontendBaseUrl = 'https://app.cetchapp.com'
 // once both hosts serve the same app and the URL contract has been verified.
 param inviteBaseUrl = 'https://app.cetchapp.com'
 
-param webDraftsEnabled = true
+// Off in production (2026-10-02) until Turnstile and the other WebDrafts__*
+// settings are configured; the website's create flow is off as well.
+param webDraftsEnabled = false
 
 // Live values on both APIs (2026-10-02). Neither API validates issuer or
 // audience, but new tokens carry them: change only with the JWT work.

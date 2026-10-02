@@ -303,6 +303,9 @@ module appService 'modules/appservice.bicep' = {
     revenueCatSecretApiKey: revenueCatSecretApiKey
     revenueCatWebhookAuthorization: revenueCatWebhookAuthorization
 
+    authAppInsightsId: monitoring.outputs.authAppInsightsId
+    dataAppInsightsId: monitoring.outputs.dataAppInsightsId
+
     authAppInsightsConnectionString: monitoring.outputs.authAppInsightsConnectionString
     dataAppInsightsConnectionString: monitoring.outputs.dataAppInsightsConnectionString
   }
