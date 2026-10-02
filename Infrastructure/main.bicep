@@ -117,6 +117,22 @@ param inviteBaseUrl string
 
 param webDraftsEnabled bool
 
+param jwtIssuer string
+param jwtAudience string
+
+param caiCallsPerUserPerDay string
+param caiProCallsPerDay string
+param caiMonthlyBudgetUsd string
+
+param googleAndroidClientId string
+param googleIosClientId string
+param googleWebClientId string
+
+@secure()
+param revenueCatSecretApiKey string
+@secure()
+param revenueCatWebhookAuthorization string
+
 // Network module
 module network 'modules/network.bicep' = {
   name: 'network-${environment}'
@@ -261,8 +277,8 @@ module appService 'modules/appservice.bicep' = {
     databaseName: mysql.outputs.databaseName
     databaseUser: mysqlAdminUsername
 
-    jwtIssuer: 'CetchAppBackend'
-    jwtAudience: 'CetchAppFrontend'
+    jwtIssuer: jwtIssuer
+    jwtAudience: jwtAudience
 
     appleBundleId: appleBundleId
     appleKeyId: appleKeyId
@@ -275,6 +291,21 @@ module appService 'modules/appservice.bicep' = {
     inviteBaseUrl: inviteBaseUrl
 
     webDraftsEnabled: webDraftsEnabled
+
+    caiCallsPerUserPerDay: caiCallsPerUserPerDay
+    caiProCallsPerDay: caiProCallsPerDay
+    caiMonthlyBudgetUsd: caiMonthlyBudgetUsd
+
+    googleAndroidClientId: googleAndroidClientId
+    googleIosClientId: googleIosClientId
+    googleWebClientId: googleWebClientId
+
+    revenueCatSecretApiKey: revenueCatSecretApiKey
+    revenueCatWebhookAuthorization: revenueCatWebhookAuthorization
+
+    authAppInsightsId: monitoring.outputs.authAppInsightsId
+    dataAppInsightsId: monitoring.outputs.dataAppInsightsId
+
     authAppInsightsConnectionString: monitoring.outputs.authAppInsightsConnectionString
     dataAppInsightsConnectionString: monitoring.outputs.dataAppInsightsConnectionString
   }

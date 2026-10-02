@@ -66,9 +66,33 @@ param firebaseAuthEmail = 'backend@cetchapp.com'
 param firebaseBucket = 'cetchapp-8b5a6.appspot.com'
 
 param frontendBaseUrl = 'https://app.cetchapp.com'
-param inviteBaseUrl = 'https://cetchapp.com'
+// app.cetchapp.com serves the invite and share pages. Move to cetchapp.com only
+// once both hosts serve the same app and the URL contract has been verified.
+param inviteBaseUrl = 'https://app.cetchapp.com'
 
-param webDraftsEnabled = true
+// Off in production (2026-10-02) until Turnstile and the other WebDrafts__*
+// settings are configured; the website's create flow is off as well.
+param webDraftsEnabled = false
+
+// Live values on both APIs (2026-10-02). Neither API validates issuer or
+// audience, but new tokens carry them: change only with the JWT work.
+param jwtIssuer = 'Jwt:Issuer'
+param jwtAudience = 'Jwt:Audience'
+
+param caiCallsPerUserPerDay = '25'
+param caiProCallsPerDay = '100'
+param caiMonthlyBudgetUsd = '20'
+
+// OAuth client IDs, public: the same values ship in the mobile app.
+param googleAndroidClientId = '307733967551-sjtusvqp2a379eo2m0s6b6obag5rdqm6.apps.googleusercontent.com'
+param googleIosClientId = '307733967551-k8ilev3c5oan87888r6qgkibjru2h9m3.apps.googleusercontent.com'
+param googleWebClientId = '307733967551-e4vdilvvtlrbd5etaqh491gn7blepmo2.apps.googleusercontent.com'
+
+// Secrets kept as literal App Settings in production today. Read from the
+// deploying shell, like MYSQL_ADMIN_PASSWORD, so they never land in the repo;
+// an unset variable stops the deployment instead of wiping the setting.
+param revenueCatSecretApiKey = readEnvironmentVariable('REVENUECAT_SECRET_API_KEY')
+param revenueCatWebhookAuthorization = readEnvironmentVariable('REVENUECAT_WEBHOOK_AUTHORIZATION')
 
 
 param staticWebAppRepositoryUrl = 'https://github.com/CetchApp/cetchapp-app-web'

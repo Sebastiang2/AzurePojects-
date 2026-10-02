@@ -72,7 +72,8 @@ resource appDatabase 'Microsoft.DBforMySQL/flexibleServers/databases@2024-12-30'
 
   properties: {
     charset: 'utf8mb4'
-    collation: 'utf8mb4_unicode_ci'
+    // The collation the production database was created with (MySQL 8 default).
+    collation: 'utf8mb4_0900_ai_ci'
   }
 }
 
