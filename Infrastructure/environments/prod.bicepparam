@@ -66,8 +66,8 @@ param firebaseAuthEmail = 'backend@cetchapp.com'
 param firebaseBucket = 'cetchapp-8b5a6.appspot.com'
 
 param frontendBaseUrl = 'https://app.cetchapp.com'
-// app.cetchapp.com serves the invite and share pages. Move to cetchapp.com only
-// once both hosts serve the same app and the URL contract has been verified.
+// app.cetchapp.com serves the invite and share pages permanently: the mobile app and
+// the backend's verify/reset mails build links on it. cetchapp.com is the company site.
 param inviteBaseUrl = 'https://app.cetchapp.com'
 
 // Off in production (2026-10-02) until Turnstile and the other WebDrafts__*
