@@ -21,6 +21,9 @@ param storageSizeGB int
 param backupRetentionDays int
 param highAvailabilityMode string
 
+@description('DatabaseName')
+param databaseName string
+
 var mysqlServerName = 'mysql-${workloadName}-${environment}-${instance}'
 
 resource mysqlServer 'Microsoft.DBforMySQL/flexibleServers@2024-12-30' = {
@@ -54,6 +57,7 @@ resource mysqlServer 'Microsoft.DBforMySQL/flexibleServers@2024-12-30' = {
       mode: highAvailabilityMode
     }
 
+
     storage: {
       storageSizeGB: storageSizeGB
       autoGrow: 'Enabled'
@@ -62,7 +66,22 @@ resource mysqlServer 'Microsoft.DBforMySQL/flexibleServers@2024-12-30' = {
   }
 }
 
+resource appDatabase 'Microsoft.DBforMySQL/flexibleServers/databases@2024-12-30' = {
+  parent: mysqlServer
+  name: databaseName
+
+  properties: {
+    charset: 'utf8mb4'
+    // The collation the production database was created with (MySQL 8 default).
+    collation: 'utf8mb4_0900_ai_ci'
+  }
+}
+
 
 output mysqlServerId string = mysqlServer.id
 output mysqlServerName string = mysqlServer.name
 output mysqlFqdn string = mysqlServer.properties.fullyQualifiedDomainName
+
+
+output mysqlServerFqdn string = mysqlServer.properties.fullyQualifiedDomainName
+output databaseName string = appDatabase.name

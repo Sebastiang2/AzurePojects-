@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.47.16.16243",
-      "templateHash": "14318547052330166588"
+      "templateHash": "13901688960529326812"
     }
   },
   "parameters": {
@@ -115,6 +116,12 @@
         "description": "Database high availability mode for MySQL server"
       }
     },
+    "databaseName": {
+      "type": "string",
+      "metadata": {
+        "description": "Database name inside the database server "
+      }
+    },
     "appServiceSkuName": {
       "type": "string",
       "metadata": {
@@ -162,10 +169,46 @@
       "metadata": {
         "description": "Static Web App resource tags"
       }
+    },
+    "staticWebAppRepositoryUrl": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App repository URL"
+      }
+    },
+    "staticWebAppBranch": {
+      "type": "string",
+      "metadata": {
+        "description": "Static Web App repository branch"
+      }
+    },
+    "appleBundleId": {
+      "type": "string"
+    },
+    "appleKeyId": {
+      "type": "string"
+    },
+    "appleTeamId": {
+      "type": "string"
+    },
+    "firebaseAuthEmail": {
+      "type": "string"
+    },
+    "firebaseBucket": {
+      "type": "string"
+    },
+    "frontendBaseUrl": {
+      "type": "string"
+    },
+    "inviteBaseUrl": {
+      "type": "string"
+    },
+    "webDraftsEnabled": {
+      "type": "bool"
     }
   },
-  "resources": [
-    {
+  "resources": {
+    "network": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('network-{0}', parameters('environment'))]",
@@ -203,13 +246,13 @@
             "value": "[parameters('privateEndpointSubnetPrefix')]"
           },
           "appNsgId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.appNsgId.value]"
+            "value": "[reference('nsg').outputs.appNsgId.value]"
           },
           "mysqlNsgId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.mysqlNsgId.value]"
+            "value": "[reference('nsg').outputs.mysqlNsgId.value]"
           },
           "privateEndpointNsgId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment'))), '2025-04-01').outputs.privateEndpointNsgId.value]"
+            "value": "[reference('nsg').outputs.privateEndpointNsgId.value]"
           }
         },
         "template": {
@@ -386,10 +429,10 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('nsg-{0}', parameters('environment')))]"
+        "nsg"
       ]
     },
-    {
+    "nsg": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('nsg-{0}', parameters('environment'))]",
@@ -632,7 +675,7 @@
         }
       }
     },
-    {
+    "privatedns": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('privatedns-{0}', parameters('environment'))]",
@@ -652,7 +695,7 @@
             "value": "[parameters('tags')]"
           },
           "vnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.vnetId.value]"
+            "value": "[reference('network').outputs.vnetId.value]"
           }
         },
         "template": {
@@ -754,10 +797,10 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]"
+        "network"
       ]
     },
-    {
+    "mysql": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('mysql-{0}', parameters('environment'))]",
@@ -783,10 +826,10 @@
             "value": "[parameters('tags')]"
           },
           "mysqlSubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.mysqlSubnetId.value]"
+            "value": "[reference('network').outputs.mysqlSubnetId.value]"
           },
           "privateDnsZoneMysqlId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment'))), '2025-04-01').outputs.PrivateDnsZonemysqlId.value]"
+            "value": "[reference('privatedns').outputs.PrivateDnsZonemysqlId.value]"
           },
           "mysqlAdminUsername": {
             "value": "[parameters('mysqlAdminUsername')]"
@@ -811,6 +854,9 @@
           },
           "highAvailabilityMode": {
             "value": "[parameters('mysqlHighAvailabilityMode')]"
+          },
+          "databaseName": {
+            "value": "[parameters('databaseName')]"
           }
         },
         "template": {
@@ -820,7 +866,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.47.16.16243",
-              "templateHash": "6983665976418293975"
+              "templateHash": "5332225373384790641"
             }
           },
           "parameters": {
@@ -868,6 +914,12 @@
             },
             "highAvailabilityMode": {
               "type": "string"
+            },
+            "databaseName": {
+              "type": "string",
+              "metadata": {
+                "description": "DatabaseName"
+              }
             }
           },
           "variables": {
@@ -906,6 +958,18 @@
                   "autoIoScaling": "Disabled"
                 }
               }
+            },
+            {
+              "type": "Microsoft.DBforMySQL/flexibleServers/databases",
+              "apiVersion": "2024-12-30",
+              "name": "[format('{0}/{1}', variables('mysqlServerName'), parameters('databaseName'))]",
+              "properties": {
+                "charset": "utf8mb4",
+                "collation": "utf8mb4_unicode_ci"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName'))]"
+              ]
             }
           ],
           "outputs": {
@@ -920,16 +984,24 @@
             "mysqlFqdn": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName')), '2024-12-30').fullyQualifiedDomainName]"
+            },
+            "mysqlServerFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName')), '2024-12-30').fullyQualifiedDomainName]"
+            },
+            "databaseName": {
+              "type": "string",
+              "value": "[parameters('databaseName')]"
             }
           }
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]",
-        "[resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment')))]"
+        "network",
+        "privatedns"
       ]
     },
-    {
+    "keyvault": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('keyvault-{0}', parameters('environment'))]",
@@ -955,10 +1027,10 @@
             "value": "[parameters('tags')]"
           },
           "privateEndpointSubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.privateEndpointSubnetId.value]"
+            "value": "[reference('network').outputs.privateEndpointSubnetId.value]"
           },
           "privateDnsZoneKeyVaultId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment'))), '2025-04-01').outputs.privateDnsZoneKeyVaultId.value]"
+            "value": "[reference('privatedns').outputs.privateDnsZoneKeyVaultId.value]"
           }
         },
         "template": {
@@ -1089,11 +1161,187 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]",
-        "[resourceId('Microsoft.Resources/deployments', format('privatedns-{0}', parameters('environment')))]"
+        "network",
+        "privatedns"
       ]
     },
-    {
+    "monitoring": {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitoring-prod",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "instance": {
+            "value": "[parameters('instance')]"
+          },
+          "tags": {
+            "value": "[parameters('tags')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.47.16.16243",
+              "templateHash": "7061595151798353600"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "metadata": {
+                "description": "Azure region for monitoring resources"
+              }
+            },
+            "workloadName": {
+              "type": "string",
+              "metadata": {
+                "description": "Workload name"
+              }
+            },
+            "environment": {
+              "type": "string",
+              "metadata": {
+                "description": "Environment name"
+              }
+            },
+            "instance": {
+              "type": "string",
+              "metadata": {
+                "description": "Instance identifier"
+              }
+            },
+            "tags": {
+              "type": "object",
+              "metadata": {
+                "description": "Common resource tags"
+              }
+            },
+            "retentionInDays": {
+              "type": "int",
+              "defaultValue": 30,
+              "metadata": {
+                "description": "Log Analytics retention in days"
+              }
+            },
+            "dailyQuotaGb": {
+              "type": "int",
+              "defaultValue": 1,
+              "metadata": {
+                "description": "Daily Log Analytics ingestion cap in GB"
+              }
+            }
+          },
+          "variables": {
+            "logAnalyticsName": "[format('log-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "authAppInsightsName": "[format('appi-{0}-auth-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "dataAppInsightsName": "[format('appi-{0}-data-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+          },
+          "resources": {
+            "logAnalytics": {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2025-02-01",
+              "name": "[variables('logAnalyticsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "properties": {
+                "sku": {
+                  "name": "PerGB2018"
+                },
+                "retentionInDays": "[parameters('retentionInDays')]",
+                "workspaceCapping": {
+                  "dailyQuotaGb": "[parameters('dailyQuotaGb')]"
+                },
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "features": {
+                  "enableLogAccessUsingOnlyResourcePermissions": true
+                }
+              }
+            },
+            "authAppInsights": {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[variables('authAppInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              },
+              "dependsOn": [
+                "logAnalytics"
+              ]
+            },
+            "dataAppInsights": {
+              "type": "Microsoft.Insights/components",
+              "apiVersion": "2020-02-02",
+              "name": "[variables('dataAppInsightsName')]",
+              "location": "[parameters('location')]",
+              "tags": "[parameters('tags')]",
+              "kind": "web",
+              "properties": {
+                "Application_Type": "web",
+                "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "IngestionMode": "LogAnalytics",
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled"
+              },
+              "dependsOn": [
+                "logAnalytics"
+              ]
+            }
+          },
+          "outputs": {
+            "logAnalyticsId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            },
+            "logAnalyticsName": {
+              "type": "string",
+              "value": "[variables('logAnalyticsName')]"
+            },
+            "authAppInsightsId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', variables('authAppInsightsName'))]"
+            },
+            "authAppInsightsConnectionString": {
+              "type": "securestring",
+              "value": "[reference('authAppInsights').ConnectionString]"
+            },
+            "dataAppInsightsId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Insights/components', variables('dataAppInsightsName'))]"
+            },
+            "dataAppInsightsConnectionString": {
+              "type": "securestring",
+              "value": "[reference('dataAppInsights').ConnectionString]"
+            }
+          }
+        }
+      }
+    },
+    "appService": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('appservice-{0}', parameters('environment'))]",
@@ -1127,8 +1375,56 @@
           "linuxFxVersion": {
             "value": "[parameters('linuxFxVersion')]"
           },
+          "keyVaultName": {
+            "value": "[reference('keyvault').outputs.keyVaultName.value]"
+          },
           "appServiceSubnetId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment'))), '2025-04-01').outputs.appserviceSubnetId.value]"
+            "value": "[reference('network').outputs.appserviceSubnetId.value]"
+          },
+          "databaseHost": {
+            "value": "[reference('mysql').outputs.mysqlServerFqdn.value]"
+          },
+          "databaseName": {
+            "value": "[reference('mysql').outputs.databaseName.value]"
+          },
+          "databaseUser": {
+            "value": "[parameters('mysqlAdminUsername')]"
+          },
+          "jwtIssuer": {
+            "value": "CetchAppBackend"
+          },
+          "jwtAudience": {
+            "value": "CetchAppFrontend"
+          },
+          "appleBundleId": {
+            "value": "[parameters('appleBundleId')]"
+          },
+          "appleKeyId": {
+            "value": "[parameters('appleKeyId')]"
+          },
+          "appleTeamId": {
+            "value": "[parameters('appleTeamId')]"
+          },
+          "firebaseAuthEmail": {
+            "value": "[parameters('firebaseAuthEmail')]"
+          },
+          "firebaseBucket": {
+            "value": "[parameters('firebaseBucket')]"
+          },
+          "frontendBaseUrl": {
+            "value": "[parameters('frontendBaseUrl')]"
+          },
+          "inviteBaseUrl": {
+            "value": "[parameters('inviteBaseUrl')]"
+          },
+          "webDraftsEnabled": {
+            "value": "[parameters('webDraftsEnabled')]"
+          },
+          "authAppInsightsConnectionString": {
+            "value": "[listOutputsWithSecureValues('monitoring', '2025-04-01').authAppInsightsConnectionString]"
+          },
+          "dataAppInsightsConnectionString": {
+            "value": "[listOutputsWithSecureValues('monitoring', '2025-04-01').dataAppInsightsConnectionString]"
           }
         },
         "template": {
@@ -1138,7 +1434,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.47.16.16243",
-              "templateHash": "11989565781818492078"
+              "templateHash": "3503183456711129449"
             }
           },
           "parameters": {
@@ -1165,6 +1461,54 @@
             },
             "linuxFxVersion": {
               "type": "string"
+            },
+            "databaseHost": {
+              "type": "string"
+            },
+            "databaseName": {
+              "type": "string"
+            },
+            "databaseUser": {
+              "type": "string"
+            },
+            "jwtIssuer": {
+              "type": "string"
+            },
+            "jwtAudience": {
+              "type": "string"
+            },
+            "keyVaultName": {
+              "type": "string"
+            },
+            "appleBundleId": {
+              "type": "string"
+            },
+            "appleKeyId": {
+              "type": "string"
+            },
+            "appleTeamId": {
+              "type": "string"
+            },
+            "firebaseAuthEmail": {
+              "type": "string"
+            },
+            "firebaseBucket": {
+              "type": "string"
+            },
+            "frontendBaseUrl": {
+              "type": "string"
+            },
+            "inviteBaseUrl": {
+              "type": "string"
+            },
+            "webDraftsEnabled": {
+              "type": "bool"
+            },
+            "authAppInsightsConnectionString": {
+              "type": "securestring"
+            },
+            "dataAppInsightsConnectionString": {
+              "type": "securestring"
             },
             "appServiceSubnetId": {
               "type": "string",
@@ -1213,22 +1557,59 @@
                 "clientAffinityEnabled": false,
                 "siteConfig": {
                   "linuxFxVersion": "[parameters('linuxFxVersion')]",
-                  "vnetRouteAllEnabled": false,
+                  "vnetRouteAllEnabled": true,
                   "alwaysOn": true,
                   "http20Enabled": true,
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
-                  "scmMinTlsVersion": "1.2",
-                  "appSettings": [
-                    {
-                      "name": "ASPNETCORE_ENVIRONMENT",
-                      "value": "Production"
-                    }
-                  ]
+                  "scmMinTlsVersion": "1.2"
                 }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'appsettings')]",
+              "properties": {
+                "ASPNETCORE_ENVIRONMENT": "Production",
+                "Urls": "http://*:8080",
+                "Database__Host": "[parameters('databaseHost')]",
+                "Database__Name": "[parameters('databaseName')]",
+                "Database__Port": "3306",
+                "Database__User": "[parameters('databaseUser')]",
+                "Database__SslMode": "Required",
+                "Database__Password": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=database-password)', parameters('keyVaultName'))]",
+                "Jwt__Issuer": "[parameters('jwtIssuer')]",
+                "Jwt__Audience": "[parameters('jwtAudience')]",
+                "Jwt__SigningKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-signing-key)', parameters('keyVaultName'))]",
+                "AuthApiUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('authApiName')), '2024-11-01').defaultHostName)]",
+                "OpenAI__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=openai-api-key)', parameters('keyVaultName'))]",
+                "GoogleMaps__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=googlemaps-api-key)', parameters('keyVaultName'))]",
+                "Firebase__AuthPassword": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-auth-password)', parameters('keyVaultName'))]",
+                "Firebase__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-api-key)', parameters('keyVaultName'))]",
+                "APPLE_APNS_PRIVATE_KEY": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=apple-apns-private-key)', parameters('keyVaultName'))]",
+                "ResendApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=resend-api-key)', parameters('keyVaultName'))]",
+                "Discord__Webhooks__0": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=discord-webhook-0)', parameters('keyVaultName'))]",
+                "Discord__Webhooks__1": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=discord-webhook-1)', parameters('keyVaultName'))]",
+                "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('dataAppInsightsConnectionString')]",
+                "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+                "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+                "XDT_MicrosoftApplicationInsights_PreemptSdk": "1",
+                "APPLE_BUNDLE_ID": "[parameters('appleBundleId')]",
+                "APPLE_KEY_ID": "[parameters('appleKeyId')]",
+                "APPLE_TEAM_ID": "[parameters('appleTeamId')]",
+                "Firebase__AuthEmail": "[parameters('firebaseAuthEmail')]",
+                "Firebase__Bucket": "[parameters('firebaseBucket')]",
+                "FrontendBaseUrl": "[parameters('frontendBaseUrl')]",
+                "InviteBaseUrl": "[parameters('inviteBaseUrl')]",
+                "WebDrafts__Enabled": "[string(parameters('webDraftsEnabled'))]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
               ]
             },
             {
@@ -1260,22 +1641,41 @@
                 "clientAffinityEnabled": false,
                 "siteConfig": {
                   "linuxFxVersion": "[parameters('linuxFxVersion')]",
-                  "vnetRouteAllEnabled": false,
+                  "vnetRouteAllEnabled": true,
                   "alwaysOn": true,
                   "http20Enabled": true,
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
-                  "scmMinTlsVersion": "1.2",
-                  "appSettings": [
-                    {
-                      "name": "ASPNETCORE_ENVIRONMENT",
-                      "value": "Production"
-                    }
-                  ]
+                  "scmMinTlsVersion": "1.2"
                 }
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('authApiName'), 'appsettings')]",
+              "properties": {
+                "ASPNETCORE_ENVIRONMENT": "Production",
+                "Urls": "http://*:8080",
+                "Database__Host": "[parameters('databaseHost')]",
+                "Database__Name": "[parameters('databaseName')]",
+                "Database__Port": "3306",
+                "Database__User": "[parameters('databaseUser')]",
+                "Database__SslMode": "Required",
+                "Database__Password": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=database-password)', parameters('keyVaultName'))]",
+                "Jwt__Issuer": "[parameters('jwtIssuer')]",
+                "Jwt__Audience": "[parameters('jwtAudience')]",
+                "Jwt__SigningKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-signing-key)', parameters('keyVaultName'))]",
+                "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('authAppInsightsConnectionString')]",
+                "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+                "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+                "XDT_MicrosoftApplicationInsights_PreemptSdk": "1"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]"
               ]
             },
             {
@@ -1380,10 +1780,13 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('network-{0}', parameters('environment')))]"
+        "keyvault",
+        "monitoring",
+        "mysql",
+        "network"
       ]
     },
-    {
+    "rbac": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('rbac-{0}', parameters('environment'))]",
@@ -1394,13 +1797,13 @@
         "mode": "Incremental",
         "parameters": {
           "keyVaultName": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('keyvault-{0}', parameters('environment'))), '2025-04-01').outputs.keyVaultName.value]"
+            "value": "[reference('keyvault').outputs.keyVaultName.value]"
           },
           "authApiPrincipalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment'))), '2025-04-01').outputs.authApiPrincipalId.value]"
+            "value": "[reference('appService').outputs.authApiPrincipalId.value]"
           },
           "dataApiPrincipalId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment'))), '2025-04-01').outputs.dataApiPrincipalId.value]"
+            "value": "[reference('appService').outputs.dataApiPrincipalId.value]"
           }
         },
         "template": {
@@ -1454,11 +1857,11 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', format('appservice-{0}', parameters('environment')))]",
-        "[resourceId('Microsoft.Resources/deployments', format('keyvault-{0}', parameters('environment')))]"
+        "appService",
+        "keyvault"
       ]
     },
-    {
+    "staticWebApp": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "[format('staticwebapp-{0}', parameters('environment'))]",
@@ -1482,6 +1885,12 @@
           },
           "tags": {
             "value": "[parameters('staticWebAppTags')]"
+          },
+          "repositoryUrl": {
+            "value": "[parameters('staticWebAppRepositoryUrl')]"
+          },
+          "branch": {
+            "value": "[parameters('staticWebAppBranch')]"
           }
         },
         "template": {
@@ -1491,7 +1900,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.47.16.16243",
-              "templateHash": "15478211762479437241"
+              "templateHash": "16759501901516534177"
             }
           },
           "parameters": {
@@ -1534,6 +1943,26 @@
               "metadata": {
                 "description": "Resource tags"
               }
+            },
+            "repositoryUrl": {
+              "type": "string",
+              "metadata": {
+                "description": "GitHub repository that owns the Static Web App deployment"
+              }
+            },
+            "branch": {
+              "type": "string",
+              "defaultValue": "main",
+              "metadata": {
+                "description": "Repository branch deployed to production"
+              }
+            },
+            "provider": {
+              "type": "string",
+              "defaultValue": "GitHub",
+              "metadata": {
+                "description": "Repository provider"
+              }
             }
           },
           "resources": [
@@ -1549,7 +1978,13 @@
               },
               "properties": {
                 "allowConfigFileUpdates": true,
-                "stagingEnvironmentPolicy": "Enabled"
+                "stagingEnvironmentPolicy": "Enabled",
+                "repositoryUrl": "[parameters('repositoryUrl')]",
+                "branch": "[parameters('branch')]",
+                "provider": "[parameters('provider')]",
+                "buildProperties": {
+                  "skipGithubActionWorkflowGeneration": true
+                }
               }
             }
           ],
@@ -1570,5 +2005,5 @@
         }
       }
     }
-  ]
+  }
 }

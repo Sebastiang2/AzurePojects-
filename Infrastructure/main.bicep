@@ -21,7 +21,7 @@ param location string
 param tags object
 
 
-//network parameters 
+//network parameters
 @description('VNet address space')
 param vnetAddressPrefix string
 
@@ -63,6 +63,8 @@ param mysqlBackupRetentionDays int
 
 param mysqlHighAvailabilityMode string
 
+@description('Database name inside the database server ')
+param databaseName string
 
 
 
@@ -93,6 +95,43 @@ param staticWebAppSkuTier string
 
 @description('Static Web App resource tags')
 param staticWebAppTags object
+
+@description('Static Web App repository URL')
+param staticWebAppRepositoryUrl string
+
+@description('Static Web App repository branch')
+param staticWebAppBranch string
+
+
+// Environment variables
+
+param appleBundleId string
+param appleKeyId string
+param appleTeamId string
+
+param firebaseAuthEmail string
+param firebaseBucket string
+
+param frontendBaseUrl string
+param inviteBaseUrl string
+
+param webDraftsEnabled bool
+
+param jwtIssuer string
+param jwtAudience string
+
+param caiCallsPerUserPerDay string
+param caiProCallsPerDay string
+param caiMonthlyBudgetUsd string
+
+param googleAndroidClientId string
+param googleIosClientId string
+param googleWebClientId string
+
+@secure()
+param revenueCatSecretApiKey string
+@secure()
+param revenueCatWebhookAuthorization string
 
 // Network module
 module network 'modules/network.bicep' = {
@@ -180,6 +219,8 @@ module mysql 'modules/mysql.bicep' = {
     storageSizeGB: mysqlStorageSizeGB
     backupRetentionDays: mysqlBackupRetentionDays
     highAvailabilityMode: mysqlHighAvailabilityMode
+
+    databaseName: databaseName
   }
 }
 
@@ -201,6 +242,19 @@ module keyvault 'modules/keyvault.bicep' = {
 }
 
 
+module monitoring 'modules/monitoring.bicep' = {
+  name: 'monitoring-prod'
+  params: {
+    location: location
+    workloadName: workloadName
+    environment: environment
+    instance: instance
+    tags: tags
+  }
+}
+
+
+
 module appService 'modules/appservice.bicep' = {
   name: 'appservice-${environment}'
 
@@ -215,7 +269,45 @@ module appService 'modules/appservice.bicep' = {
     appServiceSkuTier: appServiceSkuTier
     linuxFxVersion: linuxFxVersion
 
+    keyVaultName: keyvault.outputs.keyVaultName
+
     appServiceSubnetId: network.outputs.appserviceSubnetId
+
+    databaseHost: mysql.outputs.mysqlServerFqdn
+    databaseName: mysql.outputs.databaseName
+    databaseUser: mysqlAdminUsername
+
+    jwtIssuer: jwtIssuer
+    jwtAudience: jwtAudience
+
+    appleBundleId: appleBundleId
+    appleKeyId: appleKeyId
+    appleTeamId: appleTeamId
+
+    firebaseAuthEmail: firebaseAuthEmail
+    firebaseBucket: firebaseBucket
+
+    frontendBaseUrl: frontendBaseUrl
+    inviteBaseUrl: inviteBaseUrl
+
+    webDraftsEnabled: webDraftsEnabled
+
+    caiCallsPerUserPerDay: caiCallsPerUserPerDay
+    caiProCallsPerDay: caiProCallsPerDay
+    caiMonthlyBudgetUsd: caiMonthlyBudgetUsd
+
+    googleAndroidClientId: googleAndroidClientId
+    googleIosClientId: googleIosClientId
+    googleWebClientId: googleWebClientId
+
+    revenueCatSecretApiKey: revenueCatSecretApiKey
+    revenueCatWebhookAuthorization: revenueCatWebhookAuthorization
+
+    authAppInsightsId: monitoring.outputs.authAppInsightsId
+    dataAppInsightsId: monitoring.outputs.dataAppInsightsId
+
+    authAppInsightsConnectionString: monitoring.outputs.authAppInsightsConnectionString
+    dataAppInsightsConnectionString: monitoring.outputs.dataAppInsightsConnectionString
   }
 }
 
@@ -244,5 +336,7 @@ module staticWebApp 'modules/staticwebapp.bicep' = {
     skuName: staticWebAppSkuName
     skuTier: staticWebAppSkuTier
     tags: staticWebAppTags
+    repositoryUrl: staticWebAppRepositoryUrl
+    branch: staticWebAppBranch
   }
 }
