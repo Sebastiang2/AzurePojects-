@@ -42,7 +42,7 @@ param location = 'swedencentral'
 
 param hostName = 'admin.cetchapp.com'
 
-param tlsMode = 'none'
+param tlsMode = 'managed'
 
 // Only read when tlsMode is 'uploaded'. Not a secret.
 param certificateThumbprint = ''
