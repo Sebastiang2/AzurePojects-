@@ -15,8 +15,11 @@ using '../modules/staticwebapp.bicep'
 //   prod.staticwebapp-web.domain-app-cetchapp-com.bicepparam  app.cetchapp.com
 //
 // Bound to the Static Web App module on purpose: a deployment of this file can only
-// ever touch this Static Web App, unlike main.bicep. Deploy it in isolation, in the
-// default Incremental mode (never Complete), with the subscription pinned:
+// ever touch this Static Web App, unlike main.bicep. main.bicep declares no Static Web
+// App at all: the unused swa-invi-app-web-prod-001 it used to declare was retired from
+// the desired state, so this file and the per-domain files above are the only IaC
+// definition of the production web app. Deploy it in isolation, in the default
+// Incremental mode (never Complete), with the subscription pinned:
 //
 //   az deployment group what-if -g rg-invi-prod-swc-001 \
 //     --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
@@ -31,11 +34,13 @@ using '../modules/staticwebapp.bicep'
 // www.cetchapp.com is deliberately not bound; Cloudflare redirects it to the apex.
 //
 // cetchapp.com is not declared for this app, but a binding for it still exists in Azure
-// (created by the first domain deployment on 2026-10-03, Validating since). Leaving a
-// domain out of a template does NOT remove it from Azure: an Incremental deployment
-// leaves resources that are not in the template unchanged, and a custom domain is a
-// child resource that is never deleted by one (what-if reports no Delete for it). That
-// binding stays until it is deleted on purpose:
+// (created by the first domain deployment on 2026-10-03; Azure lists it as Failed, last
+// seen 2026-10-07). Leaving a domain out of a template does NOT remove it from Azure: an
+// Incremental deployment leaves resources that are not in the template unchanged, and a
+// custom domain is a child resource that is never deleted by one (what-if reports no
+// Delete for it). That binding stays until it is deleted on purpose, as its own cleanup
+// step. Always pin the app name: the real cetchapp.com binding lives on another Static
+// Web App (the company site), and deleting that one takes the site down:
 //   az staticwebapp hostname delete -n swa-invi-web-prod-001 -g rg-invi-prod-swc-001 \
 //     --hostname cetchapp.com
 // Never deploy any of these files in Complete mode or with a deployment stack that

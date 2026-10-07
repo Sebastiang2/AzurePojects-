@@ -79,30 +79,6 @@ param appServiceSkuTier string
 @description('Linux runtime stack')
 param linuxFxVersion string
 
-// Static Web App parameters
-
-@description('Static Web App name')
-param staticWebAppName string
-
-@description('Static Web App region. Separate from location because Static Web Apps is not available in every region')
-param staticWebAppLocation string
-
-@description('Static Web App SKU name')
-param staticWebAppSkuName string
-
-@description('Static Web App SKU tier')
-param staticWebAppSkuTier string
-
-@description('Static Web App resource tags')
-param staticWebAppTags object
-
-@description('Static Web App repository URL')
-param staticWebAppRepositoryUrl string
-
-@description('Static Web App repository branch')
-param staticWebAppBranch string
-
-
 // Environment variables
 
 param appleBundleId string
@@ -326,17 +302,11 @@ module rbac 'modules/rbac.bicep' = {
 }
 
 
-// Static Web App module. Provisions the resource only; the app repository deploys the content.
-module staticWebApp 'modules/staticwebapp.bicep' = {
-  name: 'staticwebapp-${environment}'
-
-  params: {
-    name: staticWebAppName
-    location: staticWebAppLocation
-    skuName: staticWebAppSkuName
-    skuTier: staticWebAppSkuTier
-    tags: staticWebAppTags
-    repositoryUrl: staticWebAppRepositoryUrl
-    branch: staticWebAppBranch
-  }
-}
+// No Static Web App is declared in this template, on purpose. The production web app,
+// swa-invi-web-prod-001, and its custom domains are deployed in isolation from
+// environments/prod.staticwebapp-web*.bicepparam (modules/staticwebapp.bicep and
+// modules/staticwebapp-domain.bicep), so a full deployment of this file never touches a
+// Static Web App. swa-invi-app-web-prod-001, which this template used to declare, was
+// never used (no content, no custom domains) and was retired from the desired state.
+// Removing it here does not delete the Azure resource: an Incremental deployment never
+// deletes, so the resource is removed separately, on purpose.
