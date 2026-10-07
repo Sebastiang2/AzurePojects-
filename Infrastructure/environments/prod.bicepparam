@@ -41,18 +41,6 @@ param appServiceSkuName = 'P0v3'
 param appServiceSkuTier = 'PremiumV3'
 
 param linuxFxVersion = 'DOTNETCORE|10.0'
-// Static Web App configuration (CetchApp app-web)
-// eastus2: Static Web Apps is not available in swedencentral
-param staticWebAppName = 'swa-invi-app-web-prod-001'
-param staticWebAppLocation = 'eastus2'
-param staticWebAppSkuName = 'Free'
-param staticWebAppSkuTier = 'Free'
-param staticWebAppTags = {
-  project: 'CetchApp'
-  environment: 'prod'
-  component: 'app-web'
-  'managed-by': 'bicep'
-}
 
 param databaseName = 'invi'
 
@@ -93,7 +81,3 @@ param googleWebClientId = '307733967551-e4vdilvvtlrbd5etaqh491gn7blepmo2.apps.go
 // an unset variable stops the deployment instead of wiping the setting.
 param revenueCatSecretApiKey = readEnvironmentVariable('REVENUECAT_SECRET_API_KEY')
 param revenueCatWebhookAuthorization = readEnvironmentVariable('REVENUECAT_WEBHOOK_AUTHORIZATION')
-
-
-param staticWebAppRepositoryUrl = 'https://github.com/CetchApp/cetchapp-app-web'
-param staticWebAppBranch = 'main'

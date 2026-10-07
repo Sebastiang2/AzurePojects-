@@ -61,7 +61,7 @@ Produksjonsmiljøet består av følgende komponenter:
   - App role: `Invi.Admin` (kreves for tilgang)
 
 ### Static Web App
-- **Navn**: `swa-invi-web-prod-001` (tidligere `swa-invi-app-web-prod-001`)
+- **Navn**: `swa-invi-web-prod-001`
 - **Location**: `eastus2` (Static Web Apps er ikke tilgjengelig i Sweden Central)
 - **SKU**: Standard
 - **Domener**:
@@ -69,6 +69,8 @@ Produksjonsmiljøet består av følgende komponenter:
   - `www.invi.lol`
   - `app.cetchapp.com` (deep links, invites, verify/reset, app fallback)
 - **Repo**: `https://github.com/CetchApp/Cetchapp-web` (branch: `main`)
+- **Deployment**: kun via parameterfilene `prod.staticwebapp-web*.bicepparam` (se «Separate deployments»). `main.bicep` og `deploy.sh` deklarerer ingen Static Web App.
+- **Merk**: `swa-invi-app-web-prod-001` er en annen ressurs og ikke et tidligere navn på denne. Den ble aldri tatt i bruk (Free, uten innhold og uten domener), er fjernet fra IaC og er ikke lenger en del av ønsket tilstand. Azure-ressursen kan finnes til den slettes separat; en Incremental deployment sletter den ikke.
 
 ### Overvåking / Monitoring
 - **Log Analytics Workspace**: `log-invi-prod-001`
@@ -145,7 +147,7 @@ export ADMIN_ENTRA_CLIENT_SECRET='<entra-client-secret>'
 
 ### Full infrastruktur deployment
 
-Deploy full infrastruktur (VNet, MySQL, Key Vault, APIs, Static Web App) med `deploy.sh`:
+Deploy full infrastruktur (VNet, MySQL, Key Vault og APIs) med `deploy.sh`. Static Web App er ikke med; den deployes separat (se «Separate deployments»):
 
 ```bash
 cd Infrastructure/scripts
