@@ -64,6 +64,9 @@ param authAppInsightsConnectionString string
 @secure()
 param dataAppInsightsConnectionString string
 
+@description('Enable staging deployment slot for Data API')
+param enableDataApiStagingSlot bool = false
+
 
 
 var appServicePlanName = 'asp-${workloadName}-${environment}-${instance}'
@@ -359,6 +362,161 @@ resource dataApiScmPolicy 'Microsoft.Web/sites/basicPublishingCredentialsPolicie
   }
 }
 
+// Staging deployment slot for Data API
+// Shares the same App Service Plan as production. Zero-downtime deployments: push to staging,
+// test, and swap with production. Both slots share the same MySQL database, so migrations must
+// be backward-compatible across slots.
+resource dataApiStagingSlot 'Microsoft.Web/sites/slots@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApi
+  name: 'staging'
+  location: location
+  tags: dataApiTags
+
+  kind: 'app,linux'
+
+  identity: {
+    type: 'SystemAssigned'
+  }
+
+  properties: {
+    serverFarmId: appServicePlan.id
+
+    httpsOnly: true
+    publicNetworkAccess: 'Enabled'
+
+    clientAffinityEnabled: false
+
+    siteConfig: {
+      linuxFxVersion: linuxFxVersion
+      appCommandLine: 'dotnet CetchAppAPI.dll'
+
+      vnetRouteAllEnabled: true
+
+      alwaysOn: true
+      http20Enabled: true
+      webSocketsEnabled: true
+
+      ftpsState: 'Disabled'
+
+      minTlsVersion: '1.2'
+      scmMinTlsVersion: '1.2'
+    }
+  }
+}
+
+// Staging slot app settings
+// Same as production except for slot-sticky settings (environment marker and App Insights).
+resource dataApiStagingSlotAppSettings 'Microsoft.Web/sites/slots/config@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApiStagingSlot
+  name: 'appsettings'
+
+  properties: {
+    ASPNETCORE_ENVIRONMENT: 'Staging'
+    Urls: 'http://*:8080'
+
+    Database__Host: databaseHost
+    Database__Name: databaseName
+    Database__Port: '3306'
+    Database__User: databaseUser
+    Database__SslMode: 'Required'
+
+    Database__Password: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=database-password)'
+
+    Jwt__Issuer: jwtIssuer
+    Jwt__Audience: jwtAudience
+    Jwt__SigningKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=jwt-signing-key)'
+
+    AuthApiUrl: 'https://${authApi.properties.defaultHostName}'
+
+    KeyVault__Uri: keyVaultUri
+
+    OpenAI__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=openai-api-key)'
+    GoogleMaps__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=googlemaps-api-key)'
+    Firebase__AuthPassword: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=firebase-auth-password)'
+    Firebase__ApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=firebase-api-key)'
+    APPLE_APNS_PRIVATE_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=apple-apns-private-key)'
+    ResendApiKey: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=resend-api-key)'
+
+    APPLICATIONINSIGHTS_CONNECTION_STRING: dataAppInsightsConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    XDT_MicrosoftApplicationInsights_Mode: 'recommended'
+    XDT_MicrosoftApplicationInsights_PreemptSdk: '1'
+
+    APPLE_BUNDLE_ID: appleBundleId
+    APPLE_KEY_ID: appleKeyId
+    APPLE_TEAM_ID: appleTeamId
+
+    Firebase__AuthEmail: firebaseAuthEmail
+    Firebase__Bucket: firebaseBucket
+
+    FrontendBaseUrl: frontendBaseUrl
+    InviteBaseUrl: inviteBaseUrl
+
+    WebDrafts__Enabled: string(webDraftsEnabled)
+
+    Cai__CallsPerUserPerDay: caiCallsPerUserPerDay
+    Cai__ProCallsPerDay: caiProCallsPerDay
+    Cai__MonthlyBudgetUsd: caiMonthlyBudgetUsd
+
+    Google__AndroidClientId: googleAndroidClientId
+    Google__IosClientId: googleIosClientId
+    Google__WebClientId: googleWebClientId
+
+    RevenueCat__SecretApiKey: revenueCatSecretApiKey
+    RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
+  }
+}
+
+// Slot-sticky settings for Data API
+// These settings stay with the slot during a swap (do not move to the other slot).
+// ASPNETCORE_ENVIRONMENT: keeps "Staging" in staging and "Production" in production.
+// APPLICATIONINSIGHTS_CONNECTION_STRING and related: if the slots send telemetry to different
+// App Insights resources in the future, these stay with the slot. Today both use the same.
+resource dataApiSlotConfigNames 'Microsoft.Web/sites/config@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApi
+  name: 'slotConfigNames'
+
+  properties: {
+    appSettingNames: [
+      'ASPNETCORE_ENVIRONMENT'
+      'APPLICATIONINSIGHTS_CONNECTION_STRING'
+      'ApplicationInsightsAgent_EXTENSION_VERSION'
+      'XDT_MicrosoftApplicationInsights_Mode'
+      'XDT_MicrosoftApplicationInsights_PreemptSdk'
+    ]
+  }
+}
+
+// VNet integration for staging slot
+resource dataApiStagingSlotVnetIntegration 'Microsoft.Web/sites/slots/networkConfig@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApiStagingSlot
+  name: 'virtualNetwork'
+
+  properties: {
+    subnetResourceId: appServiceSubnetId
+    swiftSupported: true
+  }
+}
+
+// Basic publishing credential policies for staging slot
+resource dataApiStagingSlotFtpPolicy 'Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApiStagingSlot
+  name: 'ftp'
+
+  properties: {
+    allow: false
+  }
+}
+
+resource dataApiStagingSlotScmPolicy 'Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies@2024-11-01' = if (enableDataApiStagingSlot) {
+  parent: dataApiStagingSlot
+  name: 'scm'
+
+  properties: {
+    allow: false
+  }
+}
+
 output appServicePlanId string = appServicePlan.id
 output appServicePlanName string = appServicePlan.name
 
@@ -375,3 +533,6 @@ output dataApiHostname string = dataApi.properties.defaultHostName
 
 output authApiPrincipalId string = authApi.identity.principalId
 output dataApiPrincipalId string = dataApi.identity.principalId
+
+output dataApiStagingSlotHostname string = enableDataApiStagingSlot ? dataApiStagingSlot!.properties.defaultHostName : ''
+output dataApiStagingSlotPrincipalId string = enableDataApiStagingSlot ? dataApiStagingSlot!.identity.principalId : ''

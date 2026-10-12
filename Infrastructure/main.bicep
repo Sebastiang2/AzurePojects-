@@ -109,6 +109,9 @@ param revenueCatSecretApiKey string
 @secure()
 param revenueCatWebhookAuthorization string
 
+@description('Enable staging deployment slot for Data API')
+param enableDataApiStagingSlot bool = false
+
 // Network module
 module network 'modules/network.bicep' = {
   name: 'network-${environment}'
@@ -284,6 +287,8 @@ module appService 'modules/appservice.bicep' = {
 
     authAppInsightsConnectionString: monitoring.outputs.authAppInsightsConnectionString
     dataAppInsightsConnectionString: monitoring.outputs.dataAppInsightsConnectionString
+
+    enableDataApiStagingSlot: enableDataApiStagingSlot
   }
 }
 
@@ -298,6 +303,7 @@ module rbac 'modules/rbac.bicep' = {
 
     authApiPrincipalId: appService.outputs.authApiPrincipalId
     dataApiPrincipalId: appService.outputs.dataApiPrincipalId
+    dataApiStagingSlotPrincipalId: appService.outputs.dataApiStagingSlotPrincipalId
   }
 }
 

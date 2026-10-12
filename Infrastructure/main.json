@@ -5,8 +5,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.47.16.16243",
-      "templateHash": "13901688960529326812"
+      "version": "0.48.1.52935",
+      "templateHash": "16080494562572437109"
     }
   },
   "parameters": {
@@ -140,48 +140,6 @@
         "description": "Linux runtime stack"
       }
     },
-    "staticWebAppName": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App name"
-      }
-    },
-    "staticWebAppLocation": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App region. Separate from location because Static Web Apps is not available in every region"
-      }
-    },
-    "staticWebAppSkuName": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App SKU name"
-      }
-    },
-    "staticWebAppSkuTier": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App SKU tier"
-      }
-    },
-    "staticWebAppTags": {
-      "type": "object",
-      "metadata": {
-        "description": "Static Web App resource tags"
-      }
-    },
-    "staticWebAppRepositoryUrl": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App repository URL"
-      }
-    },
-    "staticWebAppBranch": {
-      "type": "string",
-      "metadata": {
-        "description": "Static Web App repository branch"
-      }
-    },
     "appleBundleId": {
       "type": "string"
     },
@@ -205,6 +163,43 @@
     },
     "webDraftsEnabled": {
       "type": "bool"
+    },
+    "jwtIssuer": {
+      "type": "string"
+    },
+    "jwtAudience": {
+      "type": "string"
+    },
+    "caiCallsPerUserPerDay": {
+      "type": "string"
+    },
+    "caiProCallsPerDay": {
+      "type": "string"
+    },
+    "caiMonthlyBudgetUsd": {
+      "type": "string"
+    },
+    "googleAndroidClientId": {
+      "type": "string"
+    },
+    "googleIosClientId": {
+      "type": "string"
+    },
+    "googleWebClientId": {
+      "type": "string"
+    },
+    "revenueCatSecretApiKey": {
+      "type": "securestring"
+    },
+    "revenueCatWebhookAuthorization": {
+      "type": "securestring"
+    },
+    "enableDataApiStagingSlot": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Enable staging deployment slot for Data API"
+      }
     }
   },
   "resources": {
@@ -261,8 +256,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "7151313544965285413"
+              "version": "0.48.1.52935",
+              "templateHash": "3470778013429575139"
             }
           },
           "parameters": {
@@ -473,8 +468,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "14809840286746006594"
+              "version": "0.48.1.52935",
+              "templateHash": "1261158180318023429"
             }
           },
           "parameters": {
@@ -704,8 +699,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "18025836624515629534"
+              "version": "0.48.1.52935",
+              "templateHash": "280730542965788162"
             }
           },
           "parameters": {
@@ -865,8 +860,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "5332225373384790641"
+              "version": "0.48.1.52935",
+              "templateHash": "9868687611465691489"
             }
           },
           "parameters": {
@@ -965,7 +960,7 @@
               "name": "[format('{0}/{1}', variables('mysqlServerName'), parameters('databaseName'))]",
               "properties": {
                 "charset": "utf8mb4",
-                "collation": "utf8mb4_unicode_ci"
+                "collation": "utf8mb4_0900_ai_ci"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.DBforMySQL/flexibleServers', variables('mysqlServerName'))]"
@@ -1039,8 +1034,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "4601933435622531566"
+              "version": "0.48.1.52935",
+              "templateHash": "13410804871434163721"
             }
           },
           "parameters": {
@@ -1198,8 +1193,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "7061595151798353600"
+              "version": "0.48.1.52935",
+              "templateHash": "8546340808882369844"
             }
           },
           "parameters": {
@@ -1391,10 +1386,10 @@
             "value": "[parameters('mysqlAdminUsername')]"
           },
           "jwtIssuer": {
-            "value": "CetchAppBackend"
+            "value": "[parameters('jwtIssuer')]"
           },
           "jwtAudience": {
-            "value": "CetchAppFrontend"
+            "value": "[parameters('jwtAudience')]"
           },
           "appleBundleId": {
             "value": "[parameters('appleBundleId')]"
@@ -1420,11 +1415,44 @@
           "webDraftsEnabled": {
             "value": "[parameters('webDraftsEnabled')]"
           },
+          "caiCallsPerUserPerDay": {
+            "value": "[parameters('caiCallsPerUserPerDay')]"
+          },
+          "caiProCallsPerDay": {
+            "value": "[parameters('caiProCallsPerDay')]"
+          },
+          "caiMonthlyBudgetUsd": {
+            "value": "[parameters('caiMonthlyBudgetUsd')]"
+          },
+          "googleAndroidClientId": {
+            "value": "[parameters('googleAndroidClientId')]"
+          },
+          "googleIosClientId": {
+            "value": "[parameters('googleIosClientId')]"
+          },
+          "googleWebClientId": {
+            "value": "[parameters('googleWebClientId')]"
+          },
+          "revenueCatSecretApiKey": {
+            "value": "[parameters('revenueCatSecretApiKey')]"
+          },
+          "revenueCatWebhookAuthorization": {
+            "value": "[parameters('revenueCatWebhookAuthorization')]"
+          },
+          "authAppInsightsId": {
+            "value": "[reference('monitoring').outputs.authAppInsightsId.value]"
+          },
+          "dataAppInsightsId": {
+            "value": "[reference('monitoring').outputs.dataAppInsightsId.value]"
+          },
           "authAppInsightsConnectionString": {
             "value": "[listOutputsWithSecureValues('monitoring', '2025-04-01').authAppInsightsConnectionString]"
           },
           "dataAppInsightsConnectionString": {
             "value": "[listOutputsWithSecureValues('monitoring', '2025-04-01').dataAppInsightsConnectionString]"
+          },
+          "enableDataApiStagingSlot": {
+            "value": "[parameters('enableDataApiStagingSlot')]"
           }
         },
         "template": {
@@ -1433,8 +1461,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "3503183456711129449"
+              "version": "0.48.1.52935",
+              "templateHash": "10449535962521244023"
             }
           },
           "parameters": {
@@ -1504,11 +1532,48 @@
             "webDraftsEnabled": {
               "type": "bool"
             },
+            "caiCallsPerUserPerDay": {
+              "type": "string"
+            },
+            "caiProCallsPerDay": {
+              "type": "string"
+            },
+            "caiMonthlyBudgetUsd": {
+              "type": "string"
+            },
+            "googleAndroidClientId": {
+              "type": "string"
+            },
+            "googleIosClientId": {
+              "type": "string"
+            },
+            "googleWebClientId": {
+              "type": "string"
+            },
+            "revenueCatSecretApiKey": {
+              "type": "securestring"
+            },
+            "revenueCatWebhookAuthorization": {
+              "type": "securestring"
+            },
+            "authAppInsightsId": {
+              "type": "string"
+            },
+            "dataAppInsightsId": {
+              "type": "string"
+            },
             "authAppInsightsConnectionString": {
               "type": "securestring"
             },
             "dataAppInsightsConnectionString": {
               "type": "securestring"
+            },
+            "enableDataApiStagingSlot": {
+              "type": "bool",
+              "defaultValue": false,
+              "metadata": {
+                "description": "Enable staging deployment slot for Data API"
+              }
             },
             "appServiceSubnetId": {
               "type": "string",
@@ -1520,7 +1585,11 @@
           "variables": {
             "appServicePlanName": "[format('asp-{0}-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
             "dataApiName": "[format('app-{0}-data-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
-            "authApiName": "[format('app-{0}-auth-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]"
+            "authApiName": "[format('app-{0}-auth-api-{1}-{2}', parameters('workloadName'), parameters('environment'), parameters('instance'))]",
+            "keyVaultUri": "[format('https://{0}{1}/', parameters('keyVaultName'), environment().suffixes.keyvaultDns)]",
+            "appInsightsLinkTag": "hidden-link: /app-insights-resource-id",
+            "dataApiTags": "[union(parameters('tags'), createObject(format('{0}', variables('appInsightsLinkTag')), replace(parameters('dataAppInsightsId'), 'Microsoft.Insights', 'microsoft.insights')))]",
+            "authApiTags": "[union(parameters('tags'), createObject(format('{0}', variables('appInsightsLinkTag')), replace(parameters('authAppInsightsId'), 'Microsoft.Insights', 'microsoft.insights')))]"
           },
           "resources": [
             {
@@ -1545,7 +1614,7 @@
               "apiVersion": "2024-11-01",
               "name": "[variables('dataApiName')]",
               "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
+              "tags": "[variables('dataApiTags')]",
               "kind": "app,linux",
               "identity": {
                 "type": "SystemAssigned"
@@ -1557,9 +1626,11 @@
                 "clientAffinityEnabled": false,
                 "siteConfig": {
                   "linuxFxVersion": "[parameters('linuxFxVersion')]",
+                  "appCommandLine": "dotnet CetchAppAPI.dll",
                   "vnetRouteAllEnabled": true,
                   "alwaysOn": true,
                   "http20Enabled": true,
+                  "webSocketsEnabled": true,
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
                   "scmMinTlsVersion": "1.2"
@@ -1586,14 +1657,13 @@
                 "Jwt__Audience": "[parameters('jwtAudience')]",
                 "Jwt__SigningKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-signing-key)', parameters('keyVaultName'))]",
                 "AuthApiUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('authApiName')), '2024-11-01').defaultHostName)]",
+                "KeyVault__Uri": "[variables('keyVaultUri')]",
                 "OpenAI__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=openai-api-key)', parameters('keyVaultName'))]",
                 "GoogleMaps__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=googlemaps-api-key)', parameters('keyVaultName'))]",
                 "Firebase__AuthPassword": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-auth-password)', parameters('keyVaultName'))]",
                 "Firebase__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-api-key)', parameters('keyVaultName'))]",
                 "APPLE_APNS_PRIVATE_KEY": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=apple-apns-private-key)', parameters('keyVaultName'))]",
                 "ResendApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=resend-api-key)', parameters('keyVaultName'))]",
-                "Discord__Webhooks__0": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=discord-webhook-0)', parameters('keyVaultName'))]",
-                "Discord__Webhooks__1": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=discord-webhook-1)', parameters('keyVaultName'))]",
                 "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('dataAppInsightsConnectionString')]",
                 "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
                 "XDT_MicrosoftApplicationInsights_Mode": "recommended",
@@ -1605,7 +1675,15 @@
                 "Firebase__Bucket": "[parameters('firebaseBucket')]",
                 "FrontendBaseUrl": "[parameters('frontendBaseUrl')]",
                 "InviteBaseUrl": "[parameters('inviteBaseUrl')]",
-                "WebDrafts__Enabled": "[string(parameters('webDraftsEnabled'))]"
+                "WebDrafts__Enabled": "[string(parameters('webDraftsEnabled'))]",
+                "Cai__CallsPerUserPerDay": "[parameters('caiCallsPerUserPerDay')]",
+                "Cai__ProCallsPerDay": "[parameters('caiProCallsPerDay')]",
+                "Cai__MonthlyBudgetUsd": "[parameters('caiMonthlyBudgetUsd')]",
+                "Google__AndroidClientId": "[parameters('googleAndroidClientId')]",
+                "Google__IosClientId": "[parameters('googleIosClientId')]",
+                "Google__WebClientId": "[parameters('googleWebClientId')]",
+                "RevenueCat__SecretApiKey": "[parameters('revenueCatSecretApiKey')]",
+                "RevenueCat__WebhookAuthorization": "[parameters('revenueCatWebhookAuthorization')]"
               },
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', variables('authApiName'))]",
@@ -1629,7 +1707,7 @@
               "apiVersion": "2024-11-01",
               "name": "[variables('authApiName')]",
               "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
+              "tags": "[variables('authApiTags')]",
               "kind": "app,linux",
               "identity": {
                 "type": "SystemAssigned"
@@ -1641,9 +1719,11 @@
                 "clientAffinityEnabled": false,
                 "siteConfig": {
                   "linuxFxVersion": "[parameters('linuxFxVersion')]",
+                  "appCommandLine": "dotnet CetchAuthAPI.dll",
                   "vnetRouteAllEnabled": true,
                   "alwaysOn": true,
                   "http20Enabled": true,
+                  "webSocketsEnabled": true,
                   "ftpsState": "Disabled",
                   "minTlsVersion": "1.2",
                   "scmMinTlsVersion": "1.2"
@@ -1669,6 +1749,7 @@
                 "Jwt__Issuer": "[parameters('jwtIssuer')]",
                 "Jwt__Audience": "[parameters('jwtAudience')]",
                 "Jwt__SigningKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-signing-key)', parameters('keyVaultName'))]",
+                "KeyVault__Uri": "[variables('keyVaultUri')]",
                 "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('authAppInsightsConnectionString')]",
                 "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
                 "XDT_MicrosoftApplicationInsights_Mode": "recommended",
@@ -1733,6 +1814,145 @@
               "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
               ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/slots",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'staging')]",
+              "location": "[parameters('location')]",
+              "tags": "[variables('dataApiTags')]",
+              "kind": "app,linux",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "httpsOnly": true,
+                "publicNetworkAccess": "Enabled",
+                "clientAffinityEnabled": false,
+                "siteConfig": {
+                  "linuxFxVersion": "[parameters('linuxFxVersion')]",
+                  "appCommandLine": "dotnet CetchAppAPI.dll",
+                  "vnetRouteAllEnabled": true,
+                  "alwaysOn": true,
+                  "http20Enabled": true,
+                  "webSocketsEnabled": true,
+                  "ftpsState": "Disabled",
+                  "minTlsVersion": "1.2",
+                  "scmMinTlsVersion": "1.2"
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/slots/config",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}/{2}', variables('dataApiName'), 'staging', 'appsettings')]",
+              "properties": {
+                "ASPNETCORE_ENVIRONMENT": "Staging",
+                "Urls": "http://*:8080",
+                "Database__Host": "[parameters('databaseHost')]",
+                "Database__Name": "[parameters('databaseName')]",
+                "Database__Port": "3306",
+                "Database__User": "[parameters('databaseUser')]",
+                "Database__SslMode": "Required",
+                "Database__Password": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=database-password)', parameters('keyVaultName'))]",
+                "Jwt__Issuer": "[parameters('jwtIssuer')]",
+                "Jwt__Audience": "[parameters('jwtAudience')]",
+                "Jwt__SigningKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=jwt-signing-key)', parameters('keyVaultName'))]",
+                "AuthApiUrl": "[format('https://{0}', reference(resourceId('Microsoft.Web/sites', variables('authApiName')), '2024-11-01').defaultHostName)]",
+                "KeyVault__Uri": "[variables('keyVaultUri')]",
+                "OpenAI__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=openai-api-key)', parameters('keyVaultName'))]",
+                "GoogleMaps__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=googlemaps-api-key)', parameters('keyVaultName'))]",
+                "Firebase__AuthPassword": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-auth-password)', parameters('keyVaultName'))]",
+                "Firebase__ApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=firebase-api-key)', parameters('keyVaultName'))]",
+                "APPLE_APNS_PRIVATE_KEY": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=apple-apns-private-key)', parameters('keyVaultName'))]",
+                "ResendApiKey": "[format('@Microsoft.KeyVault(VaultName={0};SecretName=resend-api-key)', parameters('keyVaultName'))]",
+                "APPLICATIONINSIGHTS_CONNECTION_STRING": "[parameters('dataAppInsightsConnectionString')]",
+                "ApplicationInsightsAgent_EXTENSION_VERSION": "~3",
+                "XDT_MicrosoftApplicationInsights_Mode": "recommended",
+                "XDT_MicrosoftApplicationInsights_PreemptSdk": "1",
+                "APPLE_BUNDLE_ID": "[parameters('appleBundleId')]",
+                "APPLE_KEY_ID": "[parameters('appleKeyId')]",
+                "APPLE_TEAM_ID": "[parameters('appleTeamId')]",
+                "Firebase__AuthEmail": "[parameters('firebaseAuthEmail')]",
+                "Firebase__Bucket": "[parameters('firebaseBucket')]",
+                "FrontendBaseUrl": "[parameters('frontendBaseUrl')]",
+                "InviteBaseUrl": "[parameters('inviteBaseUrl')]",
+                "WebDrafts__Enabled": "[string(parameters('webDraftsEnabled'))]",
+                "Cai__CallsPerUserPerDay": "[parameters('caiCallsPerUserPerDay')]",
+                "Cai__ProCallsPerDay": "[parameters('caiProCallsPerDay')]",
+                "Cai__MonthlyBudgetUsd": "[parameters('caiMonthlyBudgetUsd')]",
+                "Google__AndroidClientId": "[parameters('googleAndroidClientId')]",
+                "Google__IosClientId": "[parameters('googleIosClientId')]",
+                "Google__WebClientId": "[parameters('googleWebClientId')]",
+                "RevenueCat__SecretApiKey": "[parameters('revenueCatSecretApiKey')]",
+                "RevenueCat__WebhookAuthorization": "[parameters('revenueCatWebhookAuthorization')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('authApiName'))]",
+                "[resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging')]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/config",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}', variables('dataApiName'), 'slotConfigNames')]",
+              "properties": {
+                "appSettingNames": [
+                  "ASPNETCORE_ENVIRONMENT",
+                  "APPLICATIONINSIGHTS_CONNECTION_STRING",
+                  "ApplicationInsightsAgent_EXTENSION_VERSION",
+                  "XDT_MicrosoftApplicationInsights_Mode",
+                  "XDT_MicrosoftApplicationInsights_PreemptSdk"
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('dataApiName'))]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/slots/networkConfig",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}/{2}', variables('dataApiName'), 'staging', 'virtualNetwork')]",
+              "properties": {
+                "subnetResourceId": "[parameters('appServiceSubnetId')]",
+                "swiftSupported": true
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging')]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}/{2}', variables('dataApiName'), 'staging', 'ftp')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging')]"
+              ]
+            },
+            {
+              "condition": "[parameters('enableDataApiStagingSlot')]",
+              "type": "Microsoft.Web/sites/slots/basicPublishingCredentialsPolicies",
+              "apiVersion": "2024-11-01",
+              "name": "[format('{0}/{1}/{2}', variables('dataApiName'), 'staging', 'scm')]",
+              "properties": {
+                "allow": false
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging')]"
+              ]
             }
           ],
           "outputs": {
@@ -1775,6 +1995,14 @@
             "dataApiPrincipalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.Web/sites', variables('dataApiName')), '2024-11-01', 'full').identity.principalId]"
+            },
+            "dataApiStagingSlotHostname": {
+              "type": "string",
+              "value": "[if(parameters('enableDataApiStagingSlot'), reference(resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging'), '2024-11-01').defaultHostName, '')]"
+            },
+            "dataApiStagingSlotPrincipalId": {
+              "type": "string",
+              "value": "[if(parameters('enableDataApiStagingSlot'), reference(resourceId('Microsoft.Web/sites/slots', variables('dataApiName'), 'staging'), '2024-11-01', 'full').identity.principalId, '')]"
             }
           }
         }
@@ -1804,6 +2032,9 @@
           },
           "dataApiPrincipalId": {
             "value": "[reference('appService').outputs.dataApiPrincipalId.value]"
+          },
+          "dataApiStagingSlotPrincipalId": {
+            "value": "[reference('appService').outputs.dataApiStagingSlotPrincipalId.value]"
           }
         },
         "template": {
@@ -1812,8 +2043,8 @@
           "metadata": {
             "_generator": {
               "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "7688241996537624613"
+              "version": "0.48.1.52935",
+              "templateHash": "6196505575644217018"
             }
           },
           "parameters": {
@@ -1825,6 +2056,13 @@
             },
             "dataApiPrincipalId": {
               "type": "string"
+            },
+            "dataApiStagingSlotPrincipalId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Principal ID of Data API staging slot (empty if slot is not enabled)"
+              }
             }
           },
           "variables": {
@@ -1852,6 +2090,18 @@
                 "principalId": "[parameters('dataApiPrincipalId')]",
                 "principalType": "ServicePrincipal"
               }
+            },
+            {
+              "condition": "[not(equals(parameters('dataApiStagingSlotPrincipalId'), ''))]",
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "scope": "[resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName'))]",
+              "name": "[guid(resourceId('Microsoft.KeyVault/vaults', parameters('keyVaultName')), parameters('dataApiStagingSlotPrincipalId'), variables('keyVaultSecretsUserRoleDefinitionId'))]",
+              "properties": {
+                "roleDefinitionId": "[variables('keyVaultSecretsUserRoleDefinitionId')]",
+                "principalId": "[parameters('dataApiStagingSlotPrincipalId')]",
+                "principalType": "ServicePrincipal"
+              }
             }
           ]
         }
@@ -1860,150 +2110,6 @@
         "appService",
         "keyvault"
       ]
-    },
-    "staticWebApp": {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "[format('staticwebapp-{0}', parameters('environment'))]",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "name": {
-            "value": "[parameters('staticWebAppName')]"
-          },
-          "location": {
-            "value": "[parameters('staticWebAppLocation')]"
-          },
-          "skuName": {
-            "value": "[parameters('staticWebAppSkuName')]"
-          },
-          "skuTier": {
-            "value": "[parameters('staticWebAppSkuTier')]"
-          },
-          "tags": {
-            "value": "[parameters('staticWebAppTags')]"
-          },
-          "repositoryUrl": {
-            "value": "[parameters('staticWebAppRepositoryUrl')]"
-          },
-          "branch": {
-            "value": "[parameters('staticWebAppBranch')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.47.16.16243",
-              "templateHash": "16759501901516534177"
-            }
-          },
-          "parameters": {
-            "name": {
-              "type": "string",
-              "metadata": {
-                "description": "Static Web App name"
-              }
-            },
-            "location": {
-              "type": "string",
-              "metadata": {
-                "description": "Azure region for the Static Web App. Set independently of the resource group location because Static Web Apps is only available in a limited set of regions"
-              }
-            },
-            "skuName": {
-              "type": "string",
-              "defaultValue": "Free",
-              "allowedValues": [
-                "Free",
-                "Standard"
-              ],
-              "metadata": {
-                "description": "Static Web App SKU name"
-              }
-            },
-            "skuTier": {
-              "type": "string",
-              "defaultValue": "Free",
-              "allowedValues": [
-                "Free",
-                "Standard"
-              ],
-              "metadata": {
-                "description": "Static Web App SKU tier"
-              }
-            },
-            "tags": {
-              "type": "object",
-              "metadata": {
-                "description": "Resource tags"
-              }
-            },
-            "repositoryUrl": {
-              "type": "string",
-              "metadata": {
-                "description": "GitHub repository that owns the Static Web App deployment"
-              }
-            },
-            "branch": {
-              "type": "string",
-              "defaultValue": "main",
-              "metadata": {
-                "description": "Repository branch deployed to production"
-              }
-            },
-            "provider": {
-              "type": "string",
-              "defaultValue": "GitHub",
-              "metadata": {
-                "description": "Repository provider"
-              }
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.Web/staticSites",
-              "apiVersion": "2024-11-01",
-              "name": "[parameters('name')]",
-              "location": "[parameters('location')]",
-              "tags": "[parameters('tags')]",
-              "sku": {
-                "name": "[parameters('skuName')]",
-                "tier": "[parameters('skuTier')]"
-              },
-              "properties": {
-                "allowConfigFileUpdates": true,
-                "stagingEnvironmentPolicy": "Enabled",
-                "repositoryUrl": "[parameters('repositoryUrl')]",
-                "branch": "[parameters('branch')]",
-                "provider": "[parameters('provider')]",
-                "buildProperties": {
-                  "skipGithubActionWorkflowGeneration": true
-                }
-              }
-            }
-          ],
-          "outputs": {
-            "staticWebAppId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.Web/staticSites', parameters('name'))]"
-            },
-            "staticWebAppName": {
-              "type": "string",
-              "value": "[parameters('name')]"
-            },
-            "staticWebAppDefaultHostname": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.Web/staticSites', parameters('name')), '2024-11-01').defaultHostname]"
-            }
-          }
-        }
-      }
     }
   }
 }
