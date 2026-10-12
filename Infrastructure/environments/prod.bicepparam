@@ -81,3 +81,6 @@ param googleWebClientId = '307733967551-e4vdilvvtlrbd5etaqh491gn7blepmo2.apps.go
 // an unset variable stops the deployment instead of wiping the setting.
 param revenueCatSecretApiKey = readEnvironmentVariable('REVENUECAT_SECRET_API_KEY')
 param revenueCatWebhookAuthorization = readEnvironmentVariable('REVENUECAT_WEBHOOK_AUTHORIZATION')
+
+// Enable staging deployment slot for Data API to support zero-downtime deployments
+param enableDataApiStagingSlot = true

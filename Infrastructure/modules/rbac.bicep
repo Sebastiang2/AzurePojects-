@@ -6,6 +6,9 @@ param authApiPrincipalId string
 
 param dataApiPrincipalId string
 
+@description('Principal ID of Data API staging slot (empty if slot is not enabled)')
+param dataApiStagingSlotPrincipalId string = ''
+
 
 
 var keyVaultSecretsUserRoleDefinitionId = subscriptionResourceId(
@@ -50,6 +53,25 @@ resource dataApiKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@202
   properties: {
     roleDefinitionId: keyVaultSecretsUserRoleDefinitionId
     principalId: dataApiPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Data API staging slot -> Key Vault Secrets User
+// The staging slot has its own managed identity with a separate principal ID, so it needs
+// its own role assignment. Only created when the staging slot is enabled.
+resource dataApiStagingSlotKeyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (dataApiStagingSlotPrincipalId != '') {
+  name: guid(
+    keyVault.id,
+    dataApiStagingSlotPrincipalId,
+    keyVaultSecretsUserRoleDefinitionId
+  )
+
+  scope: keyVault
+
+  properties: {
+    roleDefinitionId: keyVaultSecretsUserRoleDefinitionId
+    principalId: dataApiStagingSlotPrincipalId
     principalType: 'ServicePrincipal'
   }
 }
