@@ -149,6 +149,10 @@ const m = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 const d = m.deployments[process.argv[3]];
 console.log(`gate verdict ${r.verdict}, digest ${r.digest.slice(0, 12)}…, what-if ${JSON.stringify(r.whatIf.counts)}`);
 console.log(`evidence collected ${r.evidence.liveCollectedAt}`);
+if (d.mysqlServer) {
+  const text = { existing: "NOT written: the administrator password and every server property stay as they are", update: "written WITHOUT administratorLogin and administratorLoginPassword", create: "CREATED with login and password (only valid when the server does not exist)" }[d.mysqlServer.mode];
+  console.log(`\nMySQL server ${d.mysqlServer.name}: mode ${d.mysqlServer.mode} - ${text}`);
+}
 console.log(`\nResources this deployment may change (manifest, "touches"):`);
 for (const t of d.touches ?? []) console.log(`  - ${t.type} ${t.name}`);
 const allowed = r.findings.filter((f) => f.severity === "allowed");

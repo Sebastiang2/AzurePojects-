@@ -471,7 +471,11 @@
   "residualRisks": [
     {
       "id": "R-SECURE-PARAMETERS",
-      "text": "Secure parameter values (MySQL administrator password, RevenueCat key and webhook authorization, Entra client secret) are never read by the gate and what-if cannot compare them. The deploying shell must export the SAME values production has: a wrong MySQL password changes the live password, a wrong RevenueCat value breaks purchases. Check them out-of-band before you approve."
+      "text": "Secure parameter values (RevenueCat key and webhook authorization, Entra client secret) are never read by the gate and what-if cannot compare them. The deploying shell must export the SAME values production has: a wrong RevenueCat value breaks purchases. Check them with verify-secure-parameters.sh before you approve."
+    },
+    {
+      "id": "R-MYSQL-ADMIN-PASSWORD",
+      "text": "The MySQL administrator password is not part of any deployment (the server is left alone). Azure never returns it and the gate cannot verify it. It is changed only out of band, and both APIs read it from Key Vault: a change has to update the secret and restart the apps in the same step, neither of which the gate checks. A server that is created (mode create) gets its password from a secure parameter that cannot be compared."
     },
     {
       "id": "R-RESTART",
@@ -500,8 +504,12 @@
       "template": "Infrastructure/main.bicep",
       "parameters": "Infrastructure/environments/prod.bicepparam",
       "deploymentName": "invi-prod-infrastructure-001",
+      "mysqlServer": {
+        "name": "mysql-invi-prod-001",
+        "mode": "existing",
+        "why": "The production server exists and both APIs connect to it as the administrator. The deployment must not write it: API 2024-12-30 documents administratorLogin and administratorLoginPassword as creation-only and does not say what a PUT without them does to an existing server."
+      },
       "secureEnvironment": [
-        "MYSQL_ADMIN_PASSWORD",
         "REVENUECAT_SECRET_API_KEY",
         "REVENUECAT_WEBHOOK_AUTHORIZATION"
       ],
@@ -528,10 +536,6 @@
       "allowedChanges": [],
       "residualRisks": [],
       "touches": [
-        {
-          "type": "Microsoft.DBforMySQL/flexibleServers",
-          "name": "mysql-invi-prod-001"
-        },
         {
           "type": "Microsoft.Insights/components",
           "name": "appi-invi-data-api-prod-001"

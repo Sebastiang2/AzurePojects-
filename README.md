@@ -142,8 +142,9 @@ docs/
 ### Påkrevde miljøvariabler / Required Environment Variables
 
 ```bash
-# MySQL admin passord (påkrevd)
-export MYSQL_ADMIN_PASSWORD='<your-secure-password>'
+# MySQL admin passord: IKKE med ved vanlig utrulling (serveren skrives ikke, `mysqlServerMode = 'existing'`).
+# Bare når en NY server opprettes (modus `create`, se docs/deploy-runbook.md §2.3):
+# export MYSQL_ADMIN_PASSWORD='<your-secure-password>'
 
 # RevenueCat secrets (påkrevd for Data API)
 export REVENUECAT_SECRET_API_KEY='<revenuecat-secret-key>'
@@ -322,9 +323,11 @@ Endre disse verdiene og redeploy.
 
 ## Troubleshooting
 
-### Deployment feiler med "MYSQL_ADMIN_PASSWORD is not set"
+### Deployment feiler med "MYSQL_ADMIN_PASSWORD does not exist"
 
-Løsning: `export MYSQL_ADMIN_PASSWORD='<password>'`
+En vanlig utrulling leser ikke MySQL-passordet. Feilen betyr at parameterfilen er satt til å opprette en server
+(`mysqlServerMode = 'create'`). Er serveren der fra før, skal modus være `existing`: gaten stopper en `create` på en
+eksisterende server fordi den ville nullstilt administratorpassordet.
 
 ### App Service kan ikke nå Key Vault
 

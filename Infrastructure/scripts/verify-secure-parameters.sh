@@ -5,6 +5,9 @@
 #
 #   Infrastructure/scripts/verify-secure-parameters.sh --deployment <key>
 #
+# The MySQL administrator password is not part of a normal deployment (the server is left alone: see
+# docs/deploy-runbook.md), so it is not listed here. It appears only for a deployment that creates a server.
+#
 # Output is MATCH / MISMATCH / ... per parameter and NEVER a value, a hash or a length. The live value is read with
 # `az webapp config appsettings list` (a read-only call that returns the setting to YOU) and compared inside a Node process
 # that receives both values through its environment, not its argument list. Nothing is written to disk.
@@ -26,7 +29,8 @@ DEPLOYMENT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --deployment) DEPLOYMENT="${2:-}"; shift 2 ;;
-    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+    --manifest) MANIFEST="${2:-}"; shift 2 ;;   # tests only
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
   esac
 done

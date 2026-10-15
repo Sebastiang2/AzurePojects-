@@ -55,6 +55,7 @@ utrulling: `deploy.sh` kjører sin egen gate og krever ren arbeidskopi på `orig
 | 19 | Store/små bokstaver | `appCommandLine`, `linuxFxVersion`, `healthCheckPath` og app setting-verdier sammenlignes eksakt (Linux skiller); bare `true`/`false` og oppregningsverdier sammenlignes uten hensyn til store/små |
 | 20 | Easy Auth erstattes som helhet | `AUTH-CHANGE` (deklarert verdi avviker fra live), `AUTH-LIVE-ONLY` (noe live som malen ikke deklarerer og som ikke er en kjent standardverdi i `defaults.authSettingsV2`: utrullingen ville fjernet det) |
 | 21 | Manifestet kan ikke godkjenne «ingenting» | `MANIFEST-ENTRY-SHAPE`: hver `allowedChanges`-oppføring må ha en av de dokumenterte formene og en `why`; en oppføring som ikke treffer noen kontroll stopper i stedet for å tie |
+| 22 | MySQL-administratorpassordet nullstilles ikke | `DB-PASSWORD-RESENT` (passord i forespørselen til en server som finnes: ingen godkjenningsvei), `DB-SERVER-WRITTEN` / `DB-MODE-MISMATCH` (malen avviker fra modusen manifestet godkjenner), `DB-CREATE-ON-EXISTING`, `DB-CREATE-ONLY-PROPERTY`, `DB-PASSWORD-UNVERIFIABLE`, `DB-PASSWORD-MISSING-ON-CREATE`, `DB-SERVER-UNAPPROVED`; `DB-PASSWORD-KEPT` (informasjon) når serveren ikke er med |
 
 ### De tre uavhengige signalene
 
@@ -73,11 +74,32 @@ Gaten stoler ikke på ett signal alene:
 Nested objekter (app settings-bag, `securityRules`, `subnets`) erstattes som helhet også i Incremental-modus. Derfor sammenlignes
 de element for element mot live, uavhengig av hva what-if rapporterer.
 
+## MySQL-serveren og administratorpassordet
+
+Begge API-ene kobler til som administratoren (`inviadmin`), og Azure returnerer aldri passordet. Microsofts referanse for
+`Microsoft.DBforMySQL/flexibleServers` (API 2024-12-30) beskriver `administratorLogin` som «can only be specified when the
+server is being created» og `administratorLoginPassword` som «required for server creation», men sier ikke hva en PUT uten
+dem gjør med en server som finnes. En utrulling skal derfor ikke avhenge av det. Beskyttelsen er strukturell:
+
+* `modules/mysql.bicep` har tre moduser (`mysqlServerMode`): **`existing`** (standard: serveren er ikke med i utrullingen),
+  **`update`** (serveren skrives uten login og passord) og **`create`** (med begge, bare for en server som ikke finnes).
+  I `existing` er `administratorLoginPassword` ikke i forespørselen i det hele tatt (verifisert med `az bicep snapshot`).
+* Manifestet sier hva hver utrulling gjør (`deployments.<nøkkel>.mysqlServer: { name, mode, why }`), og den evaluerte malen må
+  stemme: `DB-SERVER-WRITTEN`, `DB-MODE-MISMATCH`, `DB-SERVER-UNAPPROVED`. En vanlig `main` har modus `existing` og ingen
+  `touches` for serveren, så en what-if-endring av den stopper også (`WHATIF-RESOURCE-NOT-APPROVED`).
+* Et passord i forespørselen til en server som finnes er en hard feil i alle moduser (`DB-PASSWORD-RESENT`); det finnes ingen
+  godkjenningsvei. Passord endres utenfor Bicep.
+* Ukjent betyr stopp: et uttrykk gaten ikke kan evaluere (`DB-PASSWORD-UNVERIFIABLE`), en server som mangler eller et
+  manifest uten oppføring.
+* Regresjonstester: `scripts/gate/tests/mysql.test.mjs` (reglene) og `Infrastructure/tests/mysql-server-mode.test.mjs`
+  (malen og `prod.bicepparam`, evaluert offline for hver modus).
+
 ## Manifestet (`Infrastructure/safety/manifest.json`)
 
 Alt gaten godtar som «forventet» står her og gjennomgås som kode. Det som ikke står der, stopper. Endre det i **samme PR** som
 endringen som trenger det, med begrunnelse:
 
+* `mysqlServer`: hva utrullingen gjør med MySQL-serveren (`existing` / `update` / `create`, med begrunnelse). Se avsnittet over.
 * `touches`: **de eneste ressursene utrullingen får endre** (type og navn, `*` bare som siste tegn). Alt annet i what-if som
   ikke er `NoChange` eller støy stopper gaten. Listen vises i godkjenningen. En tom liste betyr at utrullingen ikke skal endre
   noe; en *manglende* liste stopper.
@@ -98,12 +120,13 @@ Manifestet bør kreve review av en som kan Azure-sikkerhet (for eksempel CODEOWN
 
 ## Hva gaten ikke kan kontrollere (rest-risiko som godkjenneren må kvittere)
 
-1. **Secure parameters.** MySQL-passord, RevenueCat-nøkler og Entra-klienthemmelighet er ugjennomsiktige: what-if kan ikke
+1. **Secure parameters.** RevenueCat-nøkler og Entra-klienthemmelighet er ugjennomsiktige: what-if kan ikke
    sammenligne dem, og gaten leser dem aldri (den kjører på plassholdere, og det *måles* at hver variabel parameterfilen leser
-   er overstyrt: `SECURE-ENV`). En feil `MYSQL_ADMIN_PASSWORD` *endrer* administratorpassordet, og begge API-ene kobler til som
-   administrator (`inviadmin`); en feil RevenueCat-verdi bryter kjøp. `verify-secure-parameters.sh` sammenligner RevenueCat- og
-   Entra-verdiene med produksjon (kun `MATCH`/`MISMATCH`), men MySQL-passordet kan ikke leses tilbake og må bekreftes på annen
-   måte (se [`deploy-runbook.md`](deploy-runbook.md) §2.3).
+   er overstyrt: `SECURE-ENV`). En feil RevenueCat-verdi bryter kjøp. `verify-secure-parameters.sh` sammenligner RevenueCat- og
+   Entra-verdiene med produksjon (kun `MATCH`/`MISMATCH`).
+   **MySQL-administratorpassordet** (begge API-ene kobler til som `inviadmin`, og Azure returnerer det aldri) er ikke en
+   parameter for en vanlig utrulling: serveren skrives ikke, og gaten stopper alt som ville sendt passordet til en server som
+   finnes (se «MySQL-serveren» under).
 2. **Restart.** Å skrive app settings restarter appene (kort avbrudd).
 3. **Key Vault.** Secret-navn og -verdier verifiseres ikke. Key Vault-referansene på de to API-ene vises med status
    `OtherReasons` (ikke løst av App Service); appene laster secrets selv via `KeyVault__Uri`.
@@ -148,7 +171,7 @@ oppsamleren ikke har noen skriveverb og ikke skriver noe uskrubbet til disk, at 
 | Manglende app settings | `BAG-LIVE-ONLY`, `BAG-REQUIRED-MISSING`, `SLOT-BAG-REQUIRED-MISSING` | `a setting that exists live and is missing…`, `a slot bag that lacks…` |
 | Utilsiktet nettverksendring | `NET-RULE-CHANGE`, `NET-SUBNET-*`, `ACCESS-RULE-*`, `WHATIF-UNEXPECTED-CHANGE` | `an NSG rule that would change…`, `a changed subnet delegation…` |
 | Uventet RBAC-endring | `RBAC-UNREVIEWED`, `RBAC-NAME-COLLISION`, `RBAC-KNOWN-MISSING`, `FIC-UNREVIEWED` | `an unreviewed role assignment…`, `the same principal, role and scope under another name…` |
-| Manglende eller ukjente sensitive parametere | `SECURE-ENV`, `ENV-READ-UNDECLARED`, `SECURE-MISSING`, `BAG-SECURE-FEED-*`, `BAG-SECRET-LITERAL` | `a variable the parameter file reads but preflight did not override…`, `a sensitive parameter missing…` |
+| Manglende eller ukjente sensitive parametere | `SECURE-ENV`, `ENV-READ-UNDECLARED`, `SECURE-MISSING`, `BAG-SECURE-FEED-*`, `BAG-SECRET-LITERAL`, `DB-PASSWORD-*` | `a variable the parameter file reads but preflight did not override…`, `a sensitive parameter missing…` |
 | Ufullstendig what-if | `WHATIF-STATUS`, `WHATIF-ERROR`, `WHATIF-EMPTY`, `WHATIF-COVERAGE`, `WHATIF-UNSUPPORTED*`, `EVIDENCE-*` | `a what-if that did not succeed…`, `an empty what-if result…`, `a declared resource that what-if did not report…` |
 | Endringer i ikke-godkjente ressurser | `WHATIF-RESOURCE-NOT-APPROVED`, `WHATIF-TOUCHES-MISSING`, `WHATIF-CREATE` | `a change to a resource that is not in the deployment's approved list…` |
 

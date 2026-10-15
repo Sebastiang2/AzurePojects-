@@ -302,7 +302,7 @@ test("a real deploy.sh run without a terminal refuses before it does anything", 
 // ---- verify-secure-parameters.sh (operator-run; tested against a stub `az`, never against Azure) -------------------------
 const verifyScript = join(scriptsDir, "verify-secure-parameters.sh");
 
-function runVerify({ live, fail = false, shell = {}, deployment = "main" }) {
+function runVerify({ live, fail = false, shell = {}, deployment = "main", manifest }) {
   const stubDir = mkdtempSync(join(tmpdir(), "stub-az-"));
   try {
     writeFileSync(join(stubDir, "az"), '#!/usr/bin/env bash\nif [ "${STUB_AZ_FAIL:-0}" = "1" ]; then echo "boom" >&2; exit 1; fi\nprintf \'%s\r\n\' "${STUB_AZ_VALUE-}"\n', { mode: 0o755 });
@@ -312,31 +312,33 @@ function runVerify({ live, fail = false, shell = {}, deployment = "main" }) {
     // Never let this test reach the real Azure CLI: refuse to run unless the stub is what `az` resolves to.
     const resolved = spawnSync("bash", ["-c", "command -v az"], { encoding: "utf8", env }).stdout;
     assert.ok(resolved.includes("stub-az-"), `the stub az is not first on PATH (resolved ${JSON.stringify(resolved.trim())})`);
-    const r = spawnSync("bash", [verifyScript, "--deployment", deployment], { encoding: "utf8", env });
+    const args = [verifyScript, "--deployment", deployment, ...(manifest ? ["--manifest", manifest] : [])];
+    const r = spawnSync("bash", args, { encoding: "utf8", env });
     return { status: r.status, out: `${r.stdout}${r.stderr}` };
   } finally {
     rmSync(stubDir, { recursive: true, force: true });
   }
 }
-const ALL = { MYSQL_ADMIN_PASSWORD: "mysql-secret-111", REVENUECAT_SECRET_API_KEY: "live-value-AAA", REVENUECAT_WEBHOOK_AUTHORIZATION: "live-value-AAA" };
+const ALL = { REVENUECAT_SECRET_API_KEY: "live-value-AAA", REVENUECAT_WEBHOOK_AUTHORIZATION: "live-value-AAA" };
 
 test("verify-secure-parameters: matching values print MATCH, exit 0, and never a value", { skip: !haveBash }, () => {
   const r = runVerify({ live: "live-value-AAA", shell: ALL });
   assert.equal(r.status, 0, r.out);
   assert.equal((r.out.match(/\bMATCH\b/g) ?? []).length, 2, r.out);
-  assert.match(r.out, /NOT-VERIFIABLE\s+MYSQL_ADMIN_PASSWORD/);
-  for (const v of ["live-value-AAA", "mysql-secret-111"]) assert.ok(!r.out.includes(v), "a value was printed");
+  // the MySQL administrator password is not part of a normal deployment any more
+  assert.ok(!/MYSQL_ADMIN_PASSWORD/.test(r.out), "the administrator password must not be asked for");
+  assert.ok(!r.out.includes("live-value-AAA"), "a value was printed");
 });
 
 test("verify-secure-parameters: a different value is a MISMATCH and exits 1 without printing either value", { skip: !haveBash }, () => {
   const r = runVerify({ live: "other-value-BBB", shell: ALL });
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /MISMATCH/);
-  for (const v of ["live-value-AAA", "other-value-BBB", "mysql-secret-111"]) assert.ok(!r.out.includes(v), "a value was printed");
+  for (const v of ["live-value-AAA", "other-value-BBB"]) assert.ok(!r.out.includes(v), "a value was printed");
 });
 
 test("verify-secure-parameters: a missing variable, a placeholder and an unreadable live value all fail", { skip: !haveBash }, () => {
-  const missing = runVerify({ live: "x", shell: { MYSQL_ADMIN_PASSWORD: "m" } });
+  const missing = runVerify({ live: "x", shell: {} });
   assert.equal(missing.status, 1);
   assert.match(missing.out, /MISSING\s+REVENUECAT_SECRET_API_KEY/);
   const placeholder = runVerify({ live: "x", shell: { ...ALL, REVENUECAT_SECRET_API_KEY: "__GATE:REVENUECAT_SECRET_API_KEY__" } });
@@ -362,6 +364,39 @@ test("verify-secure-parameters: a setting that does not exist yet is NEW, not a 
 test("verify-secure-parameters: a deployment without secure parameters is trivially fine; an unknown one is a usage error", { skip: !haveBash }, () => {
   assert.equal(runVerify({ deployment: "swa-web" }).status, 0);
   assert.equal(runVerify({ deployment: "nope" }).status, 2);
+});
+
+test("verify-secure-parameters: a variable no app setting receives is reported NOT-VERIFIABLE, never compared", { skip: !haveBash }, () => {
+  // a creating deployment reads the administrator password: Azure never returns it, so it cannot be compared
+  const dir = mkdtempSync(join(tmpdir(), "verify-manifest-"));
+  try {
+    const manifestFile = join(dir, "manifest.json");
+    writeFileSync(manifestFile, JSON.stringify({
+      scope: { subscriptionId: "00000000-0000-0000-0000-000000000001", resourceGroup: "rg-test" },
+      apps: {},
+      deployments: { create: { secureEnvironment: ["MYSQL_ADMIN_PASSWORD"] } },
+    }));
+    const r = runVerify({ live: "x", deployment: "create", manifest: manifestFile, shell: { MYSQL_ADMIN_PASSWORD: "a-secret-that-must-not-print" } });
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.out, /NOT-VERIFIABLE\s+MYSQL_ADMIN_PASSWORD/);
+    assert.ok(!r.out.includes("a-secret-that-must-not-print"));
+    const missing = runVerify({ live: "x", deployment: "create", manifest: manifestFile, shell: {} });
+    assert.equal(missing.status, 1);
+    assert.match(missing.out, /MISSING\s+MYSQL_ADMIN_PASSWORD/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the production manifest leaves the MySQL server alone and asks for no administrator password", () => {
+  const manifest = JSON.parse(readFileSync(join(scriptsDir, "..", "safety", "manifest.json"), "utf8"));
+  const main = manifest.deployments.main;
+  assert.equal(main.mysqlServer.mode, "existing");
+  assert.ok(!main.secureEnvironment.includes("MYSQL_ADMIN_PASSWORD"));
+  assert.ok(!main.touches.some((t) => /DBforMySQL\/flexibleServers$/i.test(t.type)), "the server is not a write target of the normal deployment");
+  for (const [key, d] of Object.entries(manifest.deployments)) {
+    if (key !== "main") assert.equal(d.mysqlServer, undefined, `${key} must not carry a MySQL policy`);
+  }
 });
 
 test("verify-secure-parameters never echoes the compared values", () => {

@@ -215,39 +215,114 @@ function compareDeclared(ctx, subject, pairs, idPrefix) {
   }
 }
 
+/**
+ * The MySQL server and its administrator password. Both APIs connect as the administrator, and Azure never returns the
+ * password, so nothing can compare it. The protection is therefore structural: the manifest says what the deployment does
+ * with the server (deployments.<key>.mysqlServer.mode) and the evaluated template has to agree.
+ *
+ *   existing  the server is not written at all: the password and every property stay as they are
+ *   update    written WITHOUT administratorLogin/administratorLoginPassword (creation-only properties); approved in manifest
+ *   create    written with login and password; only when the server does not exist
+ *
+ * A password that would reach a server that exists is a hard failure in every mode: there is no approval path for it.
+ */
+function checkMysqlServer(ctx) {
+  const { desired, live, findings, deployment } = ctx;
+  const TYPE = "Microsoft.DBforMySQL/flexibleServers";
+  const declared = desired.ofType(TYPE);
+  const policy = deployment.mysqlServer;
+  const existsLive = (name) => live.resources.some((r) => lc(r.type) === lc(TYPE) && lc(r.name) === lc(name));
+
+  if (!policy) {
+    for (const server of declared) {
+      findings.fail("DB-SERVER-UNAPPROVED", server.name, "the template declares a MySQL server and this deployment has no mysqlServer entry in the manifest (mode existing, update or create)");
+    }
+    return;
+  }
+  if (!["existing", "update", "create"].includes(policy.mode)) {
+    findings.fail("DB-MODE-UNKNOWN", policy.name ?? "mysqlServer", `mysqlServer.mode ${JSON.stringify(policy.mode)} is none of existing, update, create`);
+    return;
+  }
+
+  const server = declared.find((s) => lc(s.name) === lc(policy.name));
+  for (const other of declared.filter((s) => s !== server)) {
+    findings.fail("DB-SERVER-UNAPPROVED", other.name, `the template declares a MySQL server other than ${policy.name}`);
+  }
+  const exists = existsLive(policy.name);
+  const props = server?.properties ?? {};
+  const pw = props.administratorLoginPassword;
+  const login = props.administratorLogin;
+  const sendsPassword = present(pw);
+  const sendsLogin = present(login);
+
+  // what is sent has to be knowable: an unevaluated expression could be a password or nothing
+  for (const [label, value] of [["administratorLoginPassword", pw], ["administratorLogin", login]]) {
+    if (isExpression(value)) findings.fail("DB-PASSWORD-UNVERIFIABLE", policy.name, `${label} is an expression the gate cannot evaluate offline: it cannot be shown that the administrator password is left alone`);
+  }
+  if (server && exists && sendsPassword) {
+    findings.fail("DB-PASSWORD-RESENT", policy.name, "the deployment would send the administrator password to a server that already exists: that resets the live password (both APIs connect as the administrator). Password changes are done out of band, never by a template deployment");
+  }
+
+  if (policy.mode === "existing") {
+    if (server) {
+      findings.fail("DB-SERVER-WRITTEN", policy.name, "the template writes the MySQL server, but the manifest approves this deployment only to leave it alone (mode existing)");
+    } else if (!exists) {
+      findings.fail("DB-SERVER-MISSING", policy.name, "the deployment leaves the MySQL server alone, but no such server exists: set mysqlServerMode to create (new environment) and have the manifest say so");
+    } else {
+      findings.count("databaseServersLeftAlone");
+      findings.info("DB-PASSWORD-KEPT", policy.name, "the MySQL server is not part of this deployment: nothing is written to it, so the administrator password and every server property stay as they are");
+    }
+    return;
+  }
+
+  if (!server) {
+    findings.fail("DB-MODE-MISMATCH", policy.name, `the manifest says mode ${policy.mode} but the template does not write the server`);
+    return;
+  }
+
+  if (policy.mode === "update") {
+    if (sendsLogin) findings.fail("DB-CREATE-ONLY-PROPERTY", policy.name, "administratorLogin is documented as creation-only (API 2024-12-30); an update must not send it");
+    if (!exists) findings.fail("DB-SERVER-MISSING", policy.name, "mode update, but the server does not exist");
+    findings.allowed("DB-SERVER-UPDATE", policy.name, `the server is written without administratorLogin and administratorLoginPassword (${policy.why ?? "approved in manifest"}). Azure documents both as required for creation only and does not state what a PUT without them does to an existing server`);
+  } else {
+    // create
+    if (exists) findings.fail("DB-CREATE-ON-EXISTING", policy.name, "mode create, but the server already exists: creating it again would reset the administrator password");
+    if (!sendsPassword) findings.fail("DB-PASSWORD-MISSING-ON-CREATE", policy.name, "mode create, but the template sends no administrator password: a server cannot be created without one");
+    else if (!PLACEHOLDER.exec(typeof pw === "string" ? pw : "") && !isExpression(pw)) findings.fail("DB-PASSWORD-LITERAL", policy.name, "the administrator password is not fed from a secure parameter");
+    else findings.info("DB-PASSWORD-OPAQUE", policy.name, `the administrator password for the new server is set from ${PLACEHOLDER.exec(String(pw))?.[1] ?? "a secure parameter"}; it cannot be compared. Verify the value out of band`);
+    if (!sendsLogin) findings.fail("DB-LOGIN-MISSING-ON-CREATE", policy.name, "mode create, but the template sends no administratorLogin");
+  }
+
+  // the server's other properties (update; a create on an existing server is already a failure above)
+  const l = live.mysql && lc(live.mysql.name) === lc(server.name) ? live.mysql : undefined;
+  if (!l) {
+    if (exists) findings.fail("EVIDENCE-MYSQL", server.name, "the server exists but its live configuration could not be read");
+    return;
+  }
+  const p = props;
+  compareDeclared(ctx, server.name, [
+    ["version", p.version, l.version],
+    ["sku.name", server.sku?.name, l.sku?.name],
+    ["sku.tier", server.sku?.tier, l.sku?.tier],
+    ["administratorLogin", p.administratorLogin, l.administratorLogin],
+    ["network.publicNetworkAccess", p.network?.publicNetworkAccess, l.network?.publicNetworkAccess],
+    ["network.delegatedSubnet", p.network?.delegatedSubnetResourceId ? tail(p.network.delegatedSubnetResourceId) : undefined, tail(l.network?.delegatedSubnetResourceId)],
+    ["network.privateDnsZone", p.network?.privateDnsZoneResourceId ? tail(p.network.privateDnsZoneResourceId) : undefined, tail(l.network?.privateDnsZoneResourceId)],
+    ["backup.backupRetentionDays", p.backup?.backupRetentionDays, l.backup?.backupRetentionDays],
+    ["backup.geoRedundantBackup", p.backup?.geoRedundantBackup, l.backup?.geoRedundantBackup],
+    ["highAvailability.mode", p.highAvailability?.mode, l.highAvailability?.mode],
+    ["storage.storageSizeGB", p.storage?.storageSizeGB, l.storage?.storageSizeGb ?? l.storage?.storageSizeGB],
+    ["storage.autoGrow", p.storage?.autoGrow, l.storage?.autoGrow],
+    ["storage.autoIoScaling", p.storage?.autoIoScaling, l.storage?.autoIoScaling],
+    ["location", normalizeLocation(server.location), normalizeLocation(l.location)],
+  ], "DB");
+  findings.count("databaseServers");
+}
+
 export function checkDataAndVault(ctx) {
   const { desired, live, findings } = ctx;
 
-  for (const server of desired.ofType("Microsoft.DBforMySQL/flexibleServers")) {
-    const l = live.mysql && lc(live.mysql.name) === lc(server.name) ? live.mysql : undefined;
-    if (!l) {
-      const exists = live.resources.some((r) => lc(r.type) === "microsoft.dbformysql/flexibleservers" && lc(r.name) === lc(server.name));
-      if (exists) findings.fail("EVIDENCE-MYSQL", server.name, "the server exists but its live configuration could not be read");
-      continue;
-    }
-    const p = server.properties ?? {};
-    compareDeclared(ctx, server.name, [
-      ["version", p.version, l.version],
-      ["sku.name", server.sku?.name, l.sku?.name],
-      ["sku.tier", server.sku?.tier, l.sku?.tier],
-      ["administratorLogin", p.administratorLogin, l.administratorLogin],
-      ["network.publicNetworkAccess", p.network?.publicNetworkAccess, l.network?.publicNetworkAccess],
-      ["network.delegatedSubnet", p.network?.delegatedSubnetResourceId ? tail(p.network.delegatedSubnetResourceId) : undefined, tail(l.network?.delegatedSubnetResourceId)],
-      ["network.privateDnsZone", p.network?.privateDnsZoneResourceId ? tail(p.network.privateDnsZoneResourceId) : undefined, tail(l.network?.privateDnsZoneResourceId)],
-      ["backup.backupRetentionDays", p.backup?.backupRetentionDays, l.backup?.backupRetentionDays],
-      ["backup.geoRedundantBackup", p.backup?.geoRedundantBackup, l.backup?.geoRedundantBackup],
-      ["highAvailability.mode", p.highAvailability?.mode, l.highAvailability?.mode],
-      ["storage.storageSizeGB", p.storage?.storageSizeGB, l.storage?.storageSizeGb ?? l.storage?.storageSizeGB],
-      ["storage.autoGrow", p.storage?.autoGrow, l.storage?.autoGrow],
-      ["storage.autoIoScaling", p.storage?.autoIoScaling, l.storage?.autoIoScaling],
-      ["location", normalizeLocation(server.location), normalizeLocation(l.location)],
-    ], "DB");
-    findings.count("databaseServers");
-    const pw = p.administratorLoginPassword;
-    const feed = PLACEHOLDER.exec(typeof pw === "string" ? pw : "");
-    if (!feed) findings.fail("DB-PASSWORD-LITERAL", server.name, "the administrator password is not fed from a secure parameter");
-    else findings.info("DB-PASSWORD-OPAQUE", server.name, `the administrator password is set from ${feed[1]} on every deployment; it cannot be compared and a wrong value changes the live password. Verify the value out-of-band before deploying.`);
-  }
+  checkMysqlServer(ctx);
 
   for (const vault of desired.ofType("Microsoft.KeyVault/vaults")) {
     const l = live.keyvault && lc(live.keyvault.name) === lc(vault.name) ? live.keyvault : undefined;

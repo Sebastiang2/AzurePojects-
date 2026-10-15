@@ -68,6 +68,13 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
       shapeProblems.push(`${where}: property ${JSON.stringify(c.property)} is none of setting:<NAME>, ipSecurityRestrictions:<rule>, siteConfig.<name> or a site property`);
     }
   });
+  if (deployment.mysqlServer !== undefined) {
+    const s = deployment.mysqlServer;
+    const where = `deployments.${deploymentKey}.mysqlServer`;
+    if (typeof s?.name !== "string" || !s.name) shapeProblems.push(`${where}: "name" is required`);
+    if (!["existing", "update", "create"].includes(s?.mode)) shapeProblems.push(`${where}: "mode" must be existing, update or create`);
+    if (typeof s?.why !== "string" || s.why.trim().length < 10) shapeProblems.push(`${where}: "why" must explain the decision`);
+  }
   for (const p of shapeProblems) findings.fail("MANIFEST-ENTRY-SHAPE", "manifest", p);
 
   const context = readJson(join(work, "context.json"), problems);

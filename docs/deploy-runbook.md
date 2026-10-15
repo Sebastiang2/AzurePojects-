@@ -32,7 +32,7 @@ fra gaten (`report.md`); dette er forventningen.
 | `app-invi-data-api-prod-001` appsettings | skrives som helhet; én ny setting, `PlaceSuggestions__Enabled=false`; alle andre navn og verdier uendret | **restart** av Data API |
 | `app-invi-auth-api-prod-001` appsettings | skrives som helhet; ingen endring i navn eller verdier | **restart** av Auth API |
 | `Microsoft.Insights/diagnosticSettings inviMetrics` (Data API) | adopteres (identisk kopi av den håndlagde) | ingen |
-| `mysql-invi-prod-001` | PUT med `MYSQL_ADMIN_PASSWORD`. what-if viser kun plattformstøy | administratorpassordet (`inviadmin`) **skrives på nytt**; begge API-ene kobler til som `inviadmin`: se §2.3 |
+| `mysql-invi-prod-001` | **skrives ikke** (modus `existing`): serveren er ikke med i utrullingen, bare databasen `invi` deklareres på nytt (NoChange) | ingen: administratorpassordet (`inviadmin`, som begge API-ene bruker) og alle serveregenskaper blir som de er |
 | Application Insights ×2, PE-DNS-gruppe, nettverkskonfigurasjon for de to appene | overskrives med identiske verdier (støy i what-if) | ingen |
 | RBAC (`rbac`-modulen, 2 tildelinger) | `guid()`-navn som what-if ikke kan vise; gaten har regnet navnene og sammenlignet med live | ingen: eksisterende tildelinger |
 | Nett (subnett, NSG, regler), Key Vault, plan, domener, sertifikater | uendret; migreringssubnettet og regelen `Allow-Migration-MySQL` er deklarert som midlertidig vokter | ingen |
@@ -75,7 +75,6 @@ Gaten kjører med plassholdere og ser aldri en hemmelighet. Et feil innhold i sk
 ```bash
 read -rs REVENUECAT_SECRET_API_KEY;            export REVENUECAT_SECRET_API_KEY            # lim inn fra passordbehandler, vises ikke
 read -rs REVENUECAT_WEBHOOK_AUTHORIZATION;     export REVENUECAT_WEBHOOK_AUTHORIZATION
-read -rs MYSQL_ADMIN_PASSWORD;                 export MYSQL_ADMIN_PASSWORD
 
 bash Infrastructure/scripts/verify-secure-parameters.sh --deployment main
 ```
@@ -83,17 +82,25 @@ bash Infrastructure/scripts/verify-secure-parameters.sh --deployment main
 Skriptet leser live-verdien til RevenueCat-settingene (read-only) og skriver bare `MATCH` / `MISMATCH`, aldri verdi, hash eller
 lengde. Alt annet enn `MATCH` (eller `NEW`) stopper utrullingen.
 
-`MYSQL_ADMIN_PASSWORD` kan ikke sammenlignes: Azure returnerer ikke passordet. Skriptet melder `NOT-VERIFIABLE`. Utrullingen
-**setter** administratorpassordet til skallets verdi, og *begge API-ene kobler til som administratoren* (`inviadmin`): en feil
-verdi gir avbrudd i Data API og Auth API så snart appene åpner en ny tilkobling. Dette er den farligste hemmelige parameteren.
-Bekreft før du fortsetter:
+**MySQL-administratorpassordet er ikke en del av en vanlig utrulling.** Begge API-ene kobler til som administratoren
+(`inviadmin`), og Azure returnerer aldri passordet, så det kan ikke sammenlignes. Derfor skrives serveren ikke:
+`prod.bicepparam` har `mysqlServerMode = 'existing'`, parameterfilen leser ikke passordet fra miljøet, og manifestet
+(`deployments.main.mysqlServer.mode`) sier det samme. Gaten stopper hvis malen likevel skriver serveren
+(`DB-SERVER-WRITTEN`), sender et passord til en server som finnes (`DB-PASSWORD-RESENT`) eller bruker et uttrykk den ikke kan
+evaluere (`DB-PASSWORD-UNVERIFIABLE`). Du trenger ikke `MYSQL_ADMIN_PASSWORD` i skallet, og skal ikke ha det der.
 
-1. verdien er den passordbehandleren har som *gjeldende* administratorpassord (og hvor lenge siden det ble rotert), og
-2. **helst** at den fungerer *nå*: logg inn som `inviadmin` med akkurat denne verdien fra en vert som når databasen (en midlertidig
-   VM i VNet, eller Cloud Shell i VNet). Fungerer innloggingen, er verdien det gjeldende passordet.
+Modusene (`modules/mysql.bicep`, API 2024-12-30):
 
-Kan du ikke gjøre punkt 2, og er du i tvil om punkt 1 → stopp og avklar. Et feil passord rettes ved å sette det riktige tilbake
-(§5.3), ikke ved å rulle tilbake malen.
+| Modus | Hva som skrives | Når | Godkjenning |
+|---|---|---|---|
+| `existing` (standard) | ingenting på serveren | alle vanlige utrullinger | manifestet |
+| `update` | serveren **uten** `administratorLogin` og `administratorLoginPassword` | bevisst endring av serveregenskaper (lagring, backup, versjon) | egen PR + manifestet (`mode: update`, `touches`); Azure sier ikke hva en PUT uten passord gjør med en eksisterende server, så det står som rest-risiko i rapporten |
+| `create` | serveren med login og passord fra `MYSQL_ADMIN_PASSWORD` | ny server (nytt miljø, gjenoppretting) | egen PR + manifestet; gaten stopper den hvis serveren finnes (`DB-CREATE-ON-EXISTING`) |
+
+Å opprette en ny server er en egen, gjennomgått endring: sett `mysqlServerMode = 'create'` og
+`param mysqlAdminPassword = readEnvironmentVariable('MYSQL_ADMIN_PASSWORD')` i parameterfilen, `mode: create` og
+`MYSQL_ADMIN_PASSWORD` i `secureEnvironment` i manifestet, og tillat opprettelsen (`allowedCreates`). Passordet står aldri i
+filen. Etter opprettelsen settes modus tilbake til `existing` i neste PR.
 
 ### 2.4 Sikkerhetskopi (skriver kun lokalt)
 
@@ -179,7 +186,7 @@ deployment bevarer ressurser, men *skriver app settings som helhet*. Rollback er
 | Deployment `Succeeded`, men post-verify FAIL | live avviker fra forventet: les `report.md` | §5.2 hvis en setting er feil; ellers ta funnet som en ny gate-sak |
 | Data API/Auth API svarer 5xx eller starter ikke | feil settings-verdi, manglende setting, hemmelighet | §5.2, deretter `az webapp restart` |
 | RevenueCat feiler (kjøp/webhook) | feil verdi i `REVENUECAT_*` | §5.2 for de to settingene |
-| Tilkoblinger til MySQL avvises / «Access denied» | `MYSQL_ADMIN_PASSWORD` var ikke gjeldende passord | §5.3 |
+| Tilkoblinger til MySQL avvises / «Access denied» | passordet er endret utenfor utrullingen (en utrulling endrer det ikke) | §5.3 |
 
 ### 5.2 Gjenopprett app settings (skriver; egen godkjenning)
 
@@ -200,15 +207,15 @@ rett i Bicep via PR og utrull på nytt. Ikke la live-endringen bli stående som 
 
 ### 5.3 MySQL-passordet
 
-En utrulling med feil `MYSQL_ADMIN_PASSWORD` setter administratorpassordet til feil verdi. Begge API-ene bruker `inviadmin` med
-passordet fra Key Vault, så de mister databasen ved neste tilkobling (eksisterende tilkoblinger kan leve en stund), og det samme
-gjelder migrering og drift.
+En utrulling av `main` endrer ikke MySQL-passordet: serveren skrives ikke (§2.3), og gaten stopper alt som ville sendt et
+passord til serveren. Får appene likevel «Access denied», er passordet endret utenfor utrullingen (manuelt, eller av en
+`update`/`create` som er godkjent i manifestet). Da gjelder:
 
-1. Ikke deploy på nytt med gjetninger. Hent det *gjeldende* passordet (det Key Vault-secret-et appene bruker) fra passordbehandleren.
-2. Sett det tilbake (skriver): `az mysql flexible-server update -g $RG -n mysql-invi-prod-001 --subscription $SUB --admin-password "$MYSQL_ADMIN_PASSWORD"`
-   (variabelen satt med `read -rs`, som i §2.3).
-3. Verifiser tilkoblingen fra en tillatt vert. Point-in-time-restore er siste utvei og gir en *ny* server (kutt over koblingene
-   og Key Vault-oppføringene); den er ikke en rollback av et passord.
+1. Ikke deploy på nytt og ikke gjett. Finn ut hvem som endret passordet og hva appene har i Key Vault-secreten de leser.
+2. Passord endres bare utenfor Bicep (`az mysql flexible-server update --admin-password …`) og alltid sammen med
+   Key Vault-secreten appene leser og en restart av appene. Gaten sjekker ingen av delene.
+3. Point-in-time-restore er siste utvei og gir en *ny* server (kutt over koblingene og Key Vault-oppføringene); den er ikke en
+   rollback av et passord.
 
 ### 5.4 Det rollback *ikke* gjør
 

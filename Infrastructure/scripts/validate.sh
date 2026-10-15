@@ -106,6 +106,19 @@ if (bad === 0) console.log("ok    secure parameters come from the environment; n
 process.exit(bad === 0 ? 0 : 1);
 NODE
 
+note "== unit and template regression tests (the ones present in this tree)"
+for dir in scripts/gate/tests tests; do
+  if ls "$dir"/*.test.mjs >/dev/null 2>&1; then
+    output="$(node --test "$dir"/*.test.mjs 2>&1)"; test_rc=$?
+    summary="$(printf '%s\n' "$output" | grep -E '^ℹ (tests|pass|fail|skipped)' | tr '\n' ' ')"
+    if [ "$test_rc" -eq 0 ]; then
+      ok "node --test $dir  $summary"
+    else
+      fail "node --test $dir  $summary"; printf '%s\n' "$output" | grep -E '^✖' | head -20 | sed 's/^/      /'
+    fi
+  fi
+done
+
 if [ "$failures" -eq 0 ]; then
   note "== all checks passed"
 else

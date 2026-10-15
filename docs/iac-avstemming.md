@@ -57,6 +57,8 @@ håndhever det (`BAG-LIVE-ONLY` og `BAG-REQUIRED-MISSING`).
 * what-if viser `netFrameworkVersion: v4.6` og `localMySqlEnabled: false` som «Create» mens live har `v4.0`. Det er
   skjema-standardverdier som what-if legger til; de skrives ikke (ingen virkning på Linux). Gaten behandler dem som støy og
   etterverifiseringen sjekker at live ikke endret seg.
-* MySQL-administratorpassordet sendes ved hver utrulling. En feil `MYSQL_ADMIN_PASSWORD` endrer databasepassordet. Se rest-risiko.
+* MySQL-serveren skrives ikke av en vanlig utrulling (`mysqlServerMode = 'existing'`): administratorpassordet, som begge API-ene
+  bruker, sendes aldri, og gaten stopper alt som ville gjort det. Tidligere ble det sendt ved hver utrulling. Opprettelse
+  (`create`) og endring av serveregenskaper (`update`, uten login og passord) er egne, godkjente trinn. Se `docs/deploy-runbook.md` §2.3.
 * PR #12 setter `enableDataApiStagingSlot = true` i `prod.bicepparam`, og en swap ville flyttet slotens settings (uten D1/D2) inn
   i produksjon. Se `docs/staging-slot.md` i utvidelsen av PR #12.
