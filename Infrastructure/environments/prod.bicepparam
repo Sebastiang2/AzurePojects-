@@ -22,7 +22,17 @@ param privateEndpointSubnetPrefix = '10.20.3.0/24'
 // database configuration
 param mysqlAdminUsername = 'inviadmin'
 
-param mysqlAdminPassword = readEnvironmentVariable('MYSQL_ADMIN_PASSWORD')
+// The production MySQL server already exists and is NOT written by this deployment: 'existing' leaves the server alone, so
+// its administrator password (which both APIs use, as 'inviadmin') and every property stay as they are. The password is not
+// read from the environment here on purpose.
+//
+// To CREATE a server (new environment or recovery) change, in one reviewed PR together with
+// Infrastructure/safety/manifest.json (deployments.main.mysqlServer.mode and secureEnvironment):
+//   param mysqlServerMode = 'create'
+//   param mysqlAdminPassword = readEnvironmentVariable('MYSQL_ADMIN_PASSWORD')
+// To change other properties of the existing server ('update': the PUT omits login and password) set 'update' and approve it
+// in the manifest. The gate stops 'create' on a server that exists. Never put a value for the password in this file.
+param mysqlServerMode = 'existing'
 
 param mysqlSkuTier = 'Burstable'
 
@@ -95,7 +105,7 @@ param googleIosClientId = '307733967551-k8ilev3c5oan87888r6qgkibjru2h9m3.apps.go
 param googleWebClientId = '307733967551-e4vdilvvtlrbd5etaqh491gn7blepmo2.apps.googleusercontent.com'
 
 // Secrets kept as literal App Settings in production today. Read from the
-// deploying shell, like MYSQL_ADMIN_PASSWORD, so they never land in the repo;
+// deploying shell, so they never land in the repo;
 // an unset variable stops the deployment instead of wiping the setting.
 param revenueCatSecretApiKey = readEnvironmentVariable('REVENUECAT_SECRET_API_KEY')
 param revenueCatWebhookAuthorization = readEnvironmentVariable('REVENUECAT_WEBHOOK_AUTHORIZATION')

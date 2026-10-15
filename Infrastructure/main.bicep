@@ -39,9 +39,17 @@ param privateEndpointSubnetPrefix string
 @description('admin username for MySQL server')
 param mysqlAdminUsername string
 
+@allowed([
+  'existing'
+  'update'
+  'create'
+])
+@description('What this deployment does with the MySQL server: existing = leave it alone (normal redeploy: the administrator password and every property stay as they are); update = reconcile its other properties without the creation-only login and password; create = create it with login and password. See modules/mysql.bicep.')
+param mysqlServerMode string = 'existing'
+
 @secure()
-@description('admin password for MySQL server')
-param mysqlAdminPassword string
+@description('admin password for MySQL server. Only used when mysqlServerMode is create; empty otherwise.')
+param mysqlAdminPassword string = ''
 
 @description('Database sku tier for MySQL server')
 param mysqlSkuTier string
@@ -207,6 +215,7 @@ module mysql 'modules/mysql.bicep' = {
 
     mysqlAdminUsername: mysqlAdminUsername
 
+    mysqlServerMode: mysqlServerMode
     mysqlAdminPassword: mysqlAdminPassword
 
     mysqlSkuName: mysqlSkuName
