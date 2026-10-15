@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve, relative, posix } from "node:path";
 import { execFileSync } from "node:child_process";
-import { sha256 } from "./lib/util.mjs";
+import { sha256, environmentReads } from "./lib/util.mjs";
 
 function parseArgs(argv) {
   const out = {};
@@ -48,7 +48,7 @@ const parameterSource = existsSync(join(root, parametersPath)) ? readFileSync(jo
 const using = /^\s*using\s+'([^']+)'/m.exec(parameterSource)?.[1] ?? null;
 const resolvedUsing = using ? relative(root, resolve(root, posix.dirname(parametersPath), using)).replace(/\\/g, "/") : null;
 
-const envReads = [...parameterSource.matchAll(/readEnvironmentVariable\(\s*'([^']+)'/g)].map((m) => m[1]);
+const envReads = environmentReads(parameterSource);
 
 const modules = {};
 const modulesDir = join(root, "Infrastructure", "modules");

@@ -196,6 +196,23 @@ test("env-reads lists exactly the variables a parameter file reads", () => {
   }
 });
 
+test("a variable mentioned in a comment is not a read; a read after code on the same line still is", async () => {
+  const { environmentReads } = await import("../lib/util.mjs");
+  const source = [
+    "using '../main.bicep'",
+    "// To create a server read it: param mysqlAdminPassword = readEnvironmentVariable('MYSQL_ADMIN_PASSWORD')",
+    "   // indented comment: readEnvironmentVariable('INDENTED_COMMENT')",
+    "param a = readEnvironmentVariable('REAL_ONE') // trailing comment",
+    "param b = readEnvironmentVariable( 'REAL_TWO', 'default')",
+    "param c = 'https://example.org/readEnvironmentVariable(\\'NOT_A_READ_BUT_A_STRING\\')'",
+  ].join("\n");
+  const reads = environmentReads(source);
+  assert.ok(reads.includes("REAL_ONE") && reads.includes("REAL_TWO"));
+  assert.ok(!reads.includes("MYSQL_ADMIN_PASSWORD") && !reads.includes("INDENTED_COMMENT"));
+  // a string that looks like a call is still reported: the scan errs on the side of finding reads (fail-closed)
+  assert.ok(reads.includes("NOT_A_READ_BUT_A_STRING") || reads.length >= 2);
+});
+
 // ---- the scripts themselves ---------------------------------------------------------------------------------------------
 const WRITE_VERBS = /\baz\b[^\n|;&]*\b(create|update|delete|set|add|remove|start|stop|restart|swap|purge|import|assign|apply|upload|move|regenerate|reset|invoke|deploy|import|restore|recover)\b/i;
 

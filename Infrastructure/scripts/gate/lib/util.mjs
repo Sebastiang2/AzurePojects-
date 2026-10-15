@@ -12,6 +12,19 @@ export const isExpression = (value) => typeof value === "string" && /^\[(?!\[)[\
 
 /** Placeholder the gate substitutes for a secure parameter: `__GATE:<ENV_VAR_NAME>__`. */
 export const PLACEHOLDER = /^__GATE:([A-Z0-9_]+)__$/;
+
+/**
+ * Names of the environment variables a Bicep parameter file reads. Full-line `//` comments are not code and are ignored (a
+ * comment that documents how to read a variable must not count as a read); every other line is scanned, so a read cannot
+ * hide behind anything but a comment that Bicep itself ignores.
+ */
+export function environmentReads(text) {
+  const code = String(text)
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join("\n");
+  return [...new Set([...code.matchAll(/readEnvironmentVariable\(\s*'([^']+)'/g)].map((m) => m[1]))].sort();
+}
 export const placeholderFor = (envName) => `__GATE:${envName}__`;
 
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
