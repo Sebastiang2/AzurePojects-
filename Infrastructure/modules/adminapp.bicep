@@ -61,6 +61,15 @@ param entraClientSecret string = ''
 @description('Keep the Easy Auth token store. Off: the app reads identity from the injected headers and needs no provider tokens, so none are stored or forwarded. Turn on only if sign-in testing shows the claims are missing without it')
 param entraTokenStoreEnabled bool = false
 
+@description('Base URL of the test Data API that the admin panel can switch to (Render staging). Empty = not set.')
+param dataApiTestBaseUrl string = ''
+
+@description('Name of the Key Vault secret that holds the test Data API admin key. It is passed to the app as a Key Vault reference. Empty = not set. The admin identity needs access to that secret (adminapp-rbac.bicep).')
+param dataApiTestAdminKeySecretName string = ''
+
+@description('Value of SCM_DO_BUILD_DURING_DEPLOYMENT. Empty = not set. Production has false: the pipeline builds, the platform must not.')
+param scmDoBuildDuringDeployment string = ''
+
 var appServicePlanName = 'asp-${workloadName}-${environment}-${instance}'
 var keyVaultName = 'kv-${workloadName}-${environment}-${instance}'
 var logAnalyticsName = 'log-${workloadName}-${environment}-${instance}'
@@ -212,7 +221,12 @@ resource adminApp 'Microsoft.Web/sites@2024-11-01' = {
 //   - DATA_API_ADMIN_KEY_PROD: the app reads admin-publishing-api-key from KEY_VAULT_URI at runtime
 //   - DATA_API_BASE_URL and DATA_API_ADMIN_KEY without _PROD: the app treats those as the TEST environment
 //   - the legacy onboarding and Studio URLs: publishing mode does not use them
-//   - SCM_DO_BUILD_DURING_DEPLOYMENT: not set, so a zip deployment runs no build on the shared instance
+// Set when a value is given (production has all three, set by hand 2026-10-06; the application repository's README and
+// workflow expect them on the App Service, so a deployment of this file must keep them):
+//   - DATA_API_BASE_URL_TEST and DATA_API_ADMIN_KEY_TEST: the test environment of the admin panel's environment switch
+//     (the Render staging Data API). The key is a Key Vault reference to the secret named by dataApiTestAdminKeySecretName;
+//     unlike the APIs' references it resolves (status Resolved, checked 2026-10-15)
+//   - SCM_DO_BUILD_DURING_DEPLOYMENT=false: the pipeline builds, the platform must not build on the shared instance
 // HOSTNAME makes the standalone server listen on all interfaces.
 resource adminAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   parent: adminApp
@@ -233,6 +247,11 @@ resource adminAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
       APPLICATIONINSIGHTS_CONNECTION_STRING: adminAppInsights.properties.ConnectionString
       ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
     },
+    // Settings production already has (set by hand 2026-10-06) and the template did not carry; carried so a deployment of
+    // this file no longer removes them.
+    empty(dataApiTestBaseUrl) ? {} : { DATA_API_BASE_URL_TEST: dataApiTestBaseUrl },
+    empty(dataApiTestAdminKeySecretName) ? {} : { DATA_API_ADMIN_KEY_TEST: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${dataApiTestAdminKeySecretName})' },
+    empty(scmDoBuildDuringDeployment) ? {} : { SCM_DO_BUILD_DURING_DEPLOYMENT: scmDoBuildDuringDeployment },
     easyAuthEnabled
       ? {
           MICROSOFT_PROVIDER_AUTHENTICATION_SECRET: entraClientSecret

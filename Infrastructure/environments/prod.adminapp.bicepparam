@@ -66,8 +66,8 @@ param tags = {
   managedBy: 'bicep'
 }
 
-param adminPublicUrl = 'https://admin.cetchapp.com'
-param dataApiBaseUrl = 'https://api.cetchapp.com'
+param adminPublicUrl = 'https://admin.cetchapp.com/'
+param dataApiBaseUrl = 'https://api.cetchapp.com/'
 
 // Step 6, Easy Auth. "Invi Production Admin" exists in Entra: the client ID is its application (client)
 // ID, not its object ID. Easy Auth is on only while both values are non-empty; an empty value drops the
@@ -77,3 +77,8 @@ param dataApiBaseUrl = 'https://api.cetchapp.com'
 // an unset variable stops the deployment (BCP427) instead of removing the secret from the site.
 param entraClientId = '7da1f9db-3f02-4e08-85aa-3c6743ddc5cb'
 param entraClientSecret = readEnvironmentVariable('ADMIN_ENTRA_CLIENT_SECRET')
+
+// Test toggle of the admin panel (Render staging), set by hand 2026-10-06 and carried here so a deployment does not remove it.
+param dataApiTestBaseUrl = 'https://cetchapp-data-api.onrender.com/'
+param dataApiTestAdminKeySecretName = 'admin-publishing-api-key-test'
+param scmDoBuildDuringDeployment = 'false'
