@@ -37,9 +37,9 @@ const desiredServer = (extra = {}) => ({
 });
 
 /** @param mode manifest mode (undefined = no mysqlServer entry)  @param o exists/declared/props/changeType */
-function world(mode, { exists = true, declared = false, props = {}, changeType, allowCreate = false } = {}) {
+function world(mode, { exists = true, declared = false, props = {}, changeType, allowCreate = false, accept = true } = {}) {
   const w = copy(baseWorld());
-  if (mode !== undefined) w.manifest.deployments.main.mysqlServer = { name: SERVER, mode, why: WHY };
+  if (mode !== undefined) w.manifest.deployments.main.mysqlServer = { name: SERVER, mode, why: WHY, ...(mode === "update" && accept ? { acceptsUnverifiedPasswordPreservation: true } : {}) };
   if (exists) {
     w.live.resources.push({ type: TYPE, name: SERVER });
     w.live.mysql = liveServer();
@@ -86,6 +86,12 @@ test("update: the server may be written without login and password, and the appr
   const r = run(world("update", { declared: true }));
   assert.equal(r.verdict, "PASS", JSON.stringify(ids(r)));
   has(r, "DB-SERVER-UPDATE", "allowed");
+});
+
+test("update: password preservation cannot be verified, so it is rejected unless the manifest accepts that risk explicitly", () => {
+  const r = run(world("update", { declared: true, accept: false }));
+  has(r, "DB-PASSWORD-PRESERVATION-UNVERIFIED");
+  assert.equal(r.verdict, "FAIL");
 });
 
 test("update: a password, or the creation-only login, in the request is rejected", () => {
@@ -157,4 +163,13 @@ test("a password that production already holds is never an acceptable 'update', 
   const r = run(w);
   assert.equal(r.verdict, "FAIL");
   has(r, "DB-PASSWORD-RESENT");
+});
+
+test("the acceptance flag is a boolean and only means something with mode update", () => {
+  const w = world("existing");
+  w.manifest.deployments.main.mysqlServer.acceptsUnverifiedPasswordPreservation = true;
+  has(run(w), "MANIFEST-ENTRY-SHAPE");
+  const w2 = world("update", { declared: true });
+  w2.manifest.deployments.main.mysqlServer.acceptsUnverifiedPasswordPreservation = "yes";
+  has(run(w2), "MANIFEST-ENTRY-SHAPE");
 });

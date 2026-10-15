@@ -74,6 +74,9 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
     if (typeof s?.name !== "string" || !s.name) shapeProblems.push(`${where}: "name" is required`);
     if (!["existing", "update", "create"].includes(s?.mode)) shapeProblems.push(`${where}: "mode" must be existing, update or create`);
     if (typeof s?.why !== "string" || s.why.trim().length < 10) shapeProblems.push(`${where}: "why" must explain the decision`);
+    if (s?.acceptsUnverifiedPasswordPreservation !== undefined && (typeof s.acceptsUnverifiedPasswordPreservation !== "boolean" || s.mode !== "update")) {
+      shapeProblems.push(`${where}: "acceptsUnverifiedPasswordPreservation" is a boolean and only meaningful with mode update`);
+    }
   }
   for (const p of shapeProblems) findings.fail("MANIFEST-ENTRY-SHAPE", "manifest", p);
 

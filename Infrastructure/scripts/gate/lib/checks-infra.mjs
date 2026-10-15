@@ -283,7 +283,14 @@ function checkMysqlServer(ctx) {
   if (policy.mode === "update") {
     if (sendsLogin) findings.fail("DB-CREATE-ONLY-PROPERTY", policy.name, "administratorLogin is documented as creation-only (API 2024-12-30); an update must not send it");
     if (!exists) findings.fail("DB-SERVER-MISSING", policy.name, "mode update, but the server does not exist");
-    findings.allowed("DB-SERVER-UPDATE", policy.name, `the server is written without administratorLogin and administratorLoginPassword (${policy.why ?? "approved in manifest"}). Azure documents both as required for creation only and does not state what a PUT without them does to an existing server`);
+    // Azure documents both properties as creation-only and does not state what a PUT without them does to an existing
+    // server, so "the password is preserved" cannot be verified for this mode: it is rejected unless a person has accepted
+    // exactly that risk in the manifest.
+    if (policy.acceptsUnverifiedPasswordPreservation !== true) {
+      findings.fail("DB-PASSWORD-PRESERVATION-UNVERIFIED", policy.name, "mode update writes the server without administratorLogin and administratorLoginPassword, but the gate cannot verify that this leaves the administrator password unchanged (Azure does not document it). The manifest has to accept that risk explicitly: mysqlServer.acceptsUnverifiedPasswordPreservation: true, with a reason");
+    } else {
+      findings.allowed("DB-SERVER-UPDATE", policy.name, `the server is written without administratorLogin and administratorLoginPassword; the risk that this is not password-neutral is accepted in the manifest (${policy.why ?? "no reason given"})`);
+    }
   } else {
     // create
     if (exists) findings.fail("DB-CREATE-ON-EXISTING", policy.name, "mode create, but the server already exists: creating it again would reset the administrator password");

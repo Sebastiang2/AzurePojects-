@@ -90,7 +90,9 @@ dem gjør med en server som finnes. En utrulling skal derfor ikke avhenge av det
 * Et passord i forespørselen til en server som finnes er en hard feil i alle moduser (`DB-PASSWORD-RESENT`); det finnes ingen
   godkjenningsvei. Passord endres utenfor Bicep.
 * Ukjent betyr stopp: et uttrykk gaten ikke kan evaluere (`DB-PASSWORD-UNVERIFIABLE`), en server som mangler eller et
-  manifest uten oppføring.
+  manifest uten oppføring. Modus `update` kan ikke verifiseres (Azure dokumenterer ikke hva en PUT uten login og passord gjør med
+  en server som finnes) og stoppes derfor (`DB-PASSWORD-PRESERVATION-UNVERIFIED`) til manifestet har
+  `acceptsUnverifiedPasswordPreservation: true` med begrunnelse.
 * Regresjonstester: `scripts/gate/tests/mysql.test.mjs` (reglene) og `Infrastructure/tests/mysql-server-mode.test.mjs`
   (malen og `prod.bicepparam`, evaluert offline for hver modus).
 

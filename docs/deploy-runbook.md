@@ -94,7 +94,7 @@ Modusene (`modules/mysql.bicep`, API 2024-12-30):
 | Modus | Hva som skrives | Når | Godkjenning |
 |---|---|---|---|
 | `existing` (standard) | ingenting på serveren | alle vanlige utrullinger | manifestet |
-| `update` | serveren **uten** `administratorLogin` og `administratorLoginPassword` | bevisst endring av serveregenskaper (lagring, backup, versjon) | egen PR + manifestet (`mode: update`, `touches`); Azure sier ikke hva en PUT uten passord gjør med en eksisterende server, så det står som rest-risiko i rapporten |
+| `update` | serveren **uten** `administratorLogin` og `administratorLoginPassword` | bevisst endring av serveregenskaper (lagring, backup, versjon) | egen PR + manifestet: `mode: update`, `touches` og `acceptsUnverifiedPasswordPreservation: true` med begrunnelse. Azure sier ikke hva en PUT uten passord gjør med en eksisterende server, så gaten kan ikke verifisere at passordet bevares og **stopper** (`DB-PASSWORD-PRESERVATION-UNVERIFIED`) til en person har akseptert nettopp den risikoen |
 | `create` | serveren med login og passord fra `MYSQL_ADMIN_PASSWORD` | ny server (nytt miljø, gjenoppretting) | egen PR + manifestet; gaten stopper den hvis serveren finnes (`DB-CREATE-ON-EXISTING`) |
 
 Å opprette en ny server er en egen, gjennomgått endring: sett `mysqlServerMode = 'create'` og
