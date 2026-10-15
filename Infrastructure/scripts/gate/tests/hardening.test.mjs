@@ -262,6 +262,19 @@ test("README and the Copilot instructions never tell anyone to run a bare `az de
   }
 });
 
+test("a script that disables MSYS path conversion hands native programs only native paths (git -C)", () => {
+  // git.exe cannot open /c/Users/...: with MSYS_NO_PATHCONV=1 the path must be converted by the script itself (found by the
+  // first real `deploy.sh --dry-run` on Windows).
+  for (const file of ["deploy.sh", "preflight.sh", "verify-secure-parameters.sh", "gate/collect-live.sh"]) {
+    const source = readFileSync(join(scriptsDir, file), "utf8");
+    if (!/MSYS_NO_PATHCONV=1/.test(source)) continue;
+    for (const line of source.split(/\r?\n/)) {
+      if (/^\s*#/.test(line) || !/\bgit\s+-C\s+"/.test(line)) continue;
+      assert.match(line, /git\s+-C\s+"(\$[A-Z_]+_N|\$\(to_native)/, `${file}: ${line.trim()}`);
+    }
+  }
+});
+
 test("every shell script parses", { skip: !haveBash }, () => {
   for (const file of ["preflight.sh", "deploy.sh", "validate.sh", "gate/collect-live.sh", "verify-secure-parameters.sh"]) {
     const r = spawnSync("bash", ["-n", join(scriptsDir, file)], { encoding: "utf8" });

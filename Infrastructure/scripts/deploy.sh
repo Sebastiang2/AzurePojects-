@@ -30,6 +30,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 MANIFEST="$REPO_ROOT/Infrastructure/safety/manifest.json"
 to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+# git.exe and node.exe are native Windows programs: with MSYS_NO_PATHCONV=1 an MSYS path (/c/Users/...) is passed through
+# unchanged and they cannot open it. Every path that goes to a native program is converted first.
+REPO_ROOT_N="$(to_native "$REPO_ROOT")"
 
 DEPLOYMENT=""
 ALLOW_NON_MAIN=0
@@ -89,14 +92,14 @@ echo
 
 # ---- 1. the working tree is what was reviewed ---------------------------------------------------------------------------
 GATE_ARGS=()
-if [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+if [ -n "$(git -C "$REPO_ROOT_N" status --porcelain)" ]; then
   block "the working tree has uncommitted changes. Deploy only what is committed and reviewed."
   GATE_ARGS+=(--allow-dirty)
 fi
 echo "Fetching origin to compare with main (read-only)..."
-if git -C "$REPO_ROOT" fetch --quiet origin main; then
-  HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-  MAIN_SHA="$(git -C "$REPO_ROOT" rev-parse origin/main)"
+if git -C "$REPO_ROOT_N" fetch --quiet origin main; then
+  HEAD_SHA="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
+  MAIN_SHA="$(git -C "$REPO_ROOT_N" rev-parse origin/main)"
   if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
     if [ "$ALLOW_NON_MAIN" -ne 1 ]; then
       block "HEAD ($HEAD_SHA) is not origin/main ($MAIN_SHA). Deployments follow merge; --allow-non-main is only for a reviewed commit that is not merged yet."
@@ -105,7 +108,7 @@ if git -C "$REPO_ROOT" fetch --quiet origin main; then
     fi
   fi
 else
-  HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+  HEAD_SHA="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
   block "could not fetch origin/main; cannot verify what is deployed."
 fi
 
@@ -185,8 +188,8 @@ if [ "$CONFIRM" != "DEPLOY $DEPLOYMENT $SHORT" ]; then
 fi
 
 # The files must still be the ones the gate saw, and the evidence must still be fresh: the approval may have waited.
-CURRENT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-if [ "$CURRENT_HEAD" != "$HEAD_SHA" ] || [ -n "$(git -C "$REPO_ROOT" status --porcelain)" ]; then
+CURRENT_HEAD="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
+if [ "$CURRENT_HEAD" != "$HEAD_SHA" ] || [ -n "$(git -C "$REPO_ROOT_N" status --porcelain)" ]; then
   echo "ERROR: the working tree changed after the gate ran. Nothing was deployed." >&2
   exit 1
 fi
