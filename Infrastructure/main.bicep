@@ -93,6 +93,23 @@ param inviteBaseUrl string
 
 param webDraftsEnabled bool
 
+// Data API settings production already has and the template did not carry, so a deployment of this template no longer
+// drops them. The defaults are what production has today (2026-10-14).
+param webDraftsRequireCaptcha bool = true
+param webDraftsTrustCloudflareConnectingIp bool = false
+
+// "Foreslå et sted" needs BOTH webDraftsEnabled and this one (Data API AND-gate). Off unless set.
+param placeSuggestionsEnabled bool = false
+
+@description('Custom domain bound to the Data API (served through Cloudflare). Empty = no binding is managed by this template.')
+param dataApiCustomDomain string = ''
+
+@description('Name of the certificate resource (uploaded by hand; the private key is never in Git) used for dataApiCustomDomain.')
+param dataApiCertificateName string = ''
+
+@description('Address prefix of the temporary DB-migration subnet (snet-migration-temp). Empty = not declared. Declared only so a deployment does not delete a subnet that still holds the migration VM NIC; clear it when the leftovers are decommissioned.')
+param migrationSubnetPrefix string = ''
+
 param jwtIssuer string
 param jwtAudience string
 
@@ -129,6 +146,8 @@ module network 'modules/network.bicep' = {
     mysqlNsgId: nsg.outputs.mysqlNsgId
     privateEndpointNsgId: nsg.outputs.privateEndpointNsgId
 
+    migrationSubnetPrefix: migrationSubnetPrefix
+    migrationNsgId: empty(migrationSubnetPrefix) ? '' : resourceId('Microsoft.Network/networkSecurityGroups', 'nsg-migration-temp')
   }
 }
 
@@ -152,6 +171,7 @@ module nsg 'modules/nsg.bicep' = {
     mysqlSubnetPrefix: mysqlSubnetPrefix
     privateEndpointSubnetPrefix: privateEndpointSubnetPrefix
 
+    migrationSubnetPrefix: migrationSubnetPrefix
   }
 }
 
@@ -267,6 +287,11 @@ module appService 'modules/appservice.bicep' = {
     inviteBaseUrl: inviteBaseUrl
 
     webDraftsEnabled: webDraftsEnabled
+    webDraftsRequireCaptcha: webDraftsRequireCaptcha
+    webDraftsTrustCloudflareConnectingIp: webDraftsTrustCloudflareConnectingIp
+    placeSuggestionsEnabled: placeSuggestionsEnabled
+    dataApiCustomDomain: dataApiCustomDomain
+    dataApiCertificateName: dataApiCertificateName
 
     caiCallsPerUserPerDay: caiCallsPerUserPerDay
     caiProCallsPerDay: caiProCallsPerDay

@@ -40,6 +40,15 @@ param frontendBaseUrl string
 param inviteBaseUrl string
 
 param webDraftsEnabled bool
+param webDraftsRequireCaptcha bool = true
+param webDraftsTrustCloudflareConnectingIp bool = false
+param placeSuggestionsEnabled bool = false
+
+@description('Custom domain bound to the Data API. Empty = no binding is managed here.')
+param dataApiCustomDomain string = ''
+
+@description('Name of the uploaded certificate resource for dataApiCustomDomain (it already exists; the private key is not in Git).')
+param dataApiCertificateName string = ''
 
 param caiCallsPerUserPerDay string
 param caiProCallsPerDay string
@@ -81,6 +90,15 @@ var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDn
 // Kept with the exact value the portal wrote (lower-case provider namespace),
 // since `tags` replaces every tag on the site.
 var appInsightsLinkTag = 'hidden-link: /app-insights-resource-id'
+
+var logAnalyticsId = resourceId('Microsoft.OperationalInsights/workspaces', 'log-${workloadName}-${environment}-${instance}')
+
+var dataApiDiagnosticCategories = [
+  'AppServiceHTTPLogs'
+  'AppServiceAppLogs'
+  'AppServiceFileAuditLogs'
+  'AppServiceAuthenticationLogs'
+]
 var dataApiTags = union(tags, { '${appInsightsLinkTag}': replace(dataAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
 var authApiTags = union(tags, { '${appInsightsLinkTag}': replace(authAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
 
@@ -214,6 +232,11 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     InviteBaseUrl: inviteBaseUrl
 
     WebDrafts__Enabled: string(webDraftsEnabled)
+    // Lower case, as production has them. They were set by hand before; carried here because this resource replaces the
+    // whole settings bag and would otherwise drop them.
+    WebDrafts__RequireCaptcha: toLower(string(webDraftsRequireCaptcha))
+    WebDrafts__TrustCloudflareConnectingIp: toLower(string(webDraftsTrustCloudflareConnectingIp))
+    PlaceSuggestions__Enabled: toLower(string(placeSuggestionsEnabled))
 
     Cai__CallsPerUserPerDay: caiCallsPerUserPerDay
     Cai__ProCallsPerDay: caiProCallsPerDay
@@ -356,6 +379,40 @@ resource dataApiScmPolicy 'Microsoft.Web/sites/basicPublishingCredentialsPolicie
 
   properties: {
     allow: false
+  }
+}
+
+// api.cetchapp.com is proxied by Cloudflare and presents the Cloudflare Origin CA certificate that was uploaded by hand. The
+// binding and the certificate reference are declared so the template describes what production has; the certificate itself
+// (private key) is never in Git.
+resource dataApiCertificate 'Microsoft.Web/certificates@2024-11-01' existing = if (!empty(dataApiCertificateName)) {
+  name: dataApiCertificateName
+}
+
+resource dataApiCustomHostName 'Microsoft.Web/sites/hostNameBindings@2024-11-01' = if (!empty(dataApiCustomDomain)) {
+  parent: dataApi
+  name: dataApiCustomDomain
+  properties: {
+    siteName: dataApi.name
+    hostNameType: 'Verified'
+    sslState: 'SniEnabled'
+    thumbprint: dataApiCertificate!.properties.thumbprint
+  }
+}
+
+// Exactly the diagnostic setting production has today (named inviMetrics, created by hand). Categories are not changed in
+// this declaration; widening them (for example AppServiceIPSecAuditLogs for the origin lock) is a separate, reviewed change.
+resource dataApiDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'inviMetrics'
+  scope: dataApi
+  properties: {
+    workspaceId: logAnalyticsId
+    logs: [
+      for category in dataApiDiagnosticCategories: {
+        category: category
+        enabled: true
+      }
+    ]
   }
 }
 

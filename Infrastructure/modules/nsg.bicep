@@ -24,6 +24,9 @@ param mysqlSubnetPrefix string
 @description('Private Endpoint subnet prefix')
 param privateEndpointSubnetPrefix string
 
+@description('Prefix of the temporary DB-migration subnet. When set, the MySQL NSG keeps the rule that let that subnet reach MySQL, so a deployment does not remove it while the migration VM is still there. Clear it when the migration leftovers are decommissioned.')
+param migrationSubnetPrefix string = ''
+
 
 
 //Network Security Groups naming. Same naming convention is used for all NSGs to avoid name conflicts in the same resource group.
@@ -33,6 +36,22 @@ var appNSGName = 'nsg-${workloadName}-${environment}-${instance}'
 var mysqlNSGName = 'nsg-mysql-${workloadName}-${environment}-${instance}'
 
 var privateEndpointNSGName = 'nsg-privateendpoint-${workloadName}-${environment}-${instance}'
+
+var migrationMysqlRules = empty(migrationSubnetPrefix) ? [] : [
+  {
+    name: 'Allow-Migration-MySQL'
+    properties: {
+      priority: 120
+      direction: 'Inbound'
+      access: 'Allow'
+      protocol: 'Tcp'
+      sourcePortRange: '*'
+      destinationPortRange: '3306'
+      sourceAddressPrefix: migrationSubnetPrefix
+      destinationAddressPrefix: mysqlSubnetPrefix
+    }
+  }
+]
 
 
 // App Service NSG
@@ -108,7 +127,7 @@ resource mysqlNSG 'Microsoft.Network/networkSecurityGroups@2023-02-01' = {
   tags: tags
 
   properties: {
-    securityRules: [
+    securityRules: concat([
       {
         name: 'Allow-AppService-MySQL'
         properties: {
@@ -156,7 +175,7 @@ resource mysqlNSG 'Microsoft.Network/networkSecurityGroups@2023-02-01' = {
           destinationAddressPrefix: mysqlSubnetPrefix
         }
       }
-    ]
+    ], migrationMysqlRules)
   }
 }
 
