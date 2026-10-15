@@ -9,12 +9,12 @@ param secretName string
 @description('Object ID of the managed identity that gets read access to the secret')
 param principalId string
 
-// Key Vault Secrets User on one secret instead of the whole vault, which rbac.bicep does for
-// the APIs. Same role and the same assignment-name shape (principalId in the guid, so a
-// recreated identity gets a new assignment instead of colliding with the orphaned one).
 @description('Name (GUID) of an assignment that already exists for this principal, role and secret. Azure allows only one such assignment, so a hand-made one is adopted by giving its name here; empty = the name is derived with guid().')
 param existingAssignmentName string = ''
 
+// Key Vault Secrets User on one secret instead of the whole vault, which rbac.bicep does for
+// the APIs. Same role and the same assignment-name shape (principalId in the guid, so a
+// recreated identity gets a new assignment instead of colliding with the orphaned one).
 var keyVaultSecretsUserRoleDefinitionId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '4633458b-17de-408a-b874-0445c86b69e6'
