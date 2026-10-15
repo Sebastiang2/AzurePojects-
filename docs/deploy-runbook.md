@@ -108,9 +108,11 @@ az mysql flexible-server show -g $RG -n mysql-invi-prod-001 --subscription $SUB 
 `$BACKUP` inneholder **hemmelige verdier** (RevenueCat-literaler, kobling til Key Vault). Den skal ikke ut av maskinen, ikke i
 repoet, ikke i chat, og slettes etter at utrullingen er verifisert (§4). Den er kun til gjenoppretting av settings (§5.2).
 
-MySQL: automatisk sikkerhetskopi og point-in-time-restore skal finnes og dekke tiden fra nå; kontroller `backupRetentionDays` og
-at det ikke står `geoRedundantBackup` som avvik mot normalt. En manuell sikkerhetskopi (`az mysql flexible-server backup
-create`) er valgfri og er en **skriver**.
+MySQL: automatisk sikkerhetskopi og point-in-time-restore skal finnes og dekke tiden fra nå. I dag er det
+`backupRetentionDays: 14` og `geoRedundantBackup: Disabled` (det samme som koden deklarerer); avvik fra det er drift. En manuell
+sikkerhetskopi (`az mysql flexible-server backup create`) er valgfri og er en **skriver**. Lagringen er 32 GB med auto-grow:
+vokser databasen forbi det koden deklarerer, ville en utrulling prøve å krympe lagringen, og gaten stopper på forskjellen
+(`DB-CHANGE`) i stedet for at ARM feiler midtveis.
 
 ### 2.5 Prøvekjøring
 
