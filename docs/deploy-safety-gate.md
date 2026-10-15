@@ -53,6 +53,8 @@ utrulling: `deploy.sh` kjører sin egen gate og krever ren arbeidskopi på `orig
 | 17 | Hemmelige parametere er målt, ikke antatt | `SECURE-ENV` (parameterfilen leser en variabel preflight ikke overstyrte med plassholder), `ENV-READ-UNDECLARED`, `SECURE-MISSING` (variabel mangler i skallet som deployer; kun informasjon i en lokal gjennomgang) |
 | 18 | Slots følger samme regler som hovedsiden | `SLOT-BAG-REQUIRED-MISSING`, `SLOT-BAG-INVARIANT` (WebDrafts kan ikke slås på i en slot), `SLOT-BAG-SECURE-FEED`, `SLOT-BAG-SECRET-LITERAL` |
 | 19 | Store/små bokstaver | `appCommandLine`, `linuxFxVersion`, `healthCheckPath` og app setting-verdier sammenlignes eksakt (Linux skiller); bare `true`/`false` og oppregningsverdier sammenlignes uten hensyn til store/små |
+| 20 | Easy Auth erstattes som helhet | `AUTH-CHANGE` (deklarert verdi avviker fra live), `AUTH-LIVE-ONLY` (noe live som malen ikke deklarerer og som ikke er en kjent standardverdi i `defaults.authSettingsV2`: utrullingen ville fjernet det) |
+| 21 | Manifestet kan ikke godkjenne «ingenting» | `MANIFEST-ENTRY-SHAPE`: hver `allowedChanges`-oppføring må ha en av de dokumenterte formene og en `why`; en oppføring som ikke treffer noen kontroll stopper i stedet for å tie |
 
 ### De tre uavhengige signalene
 
@@ -86,6 +88,9 @@ endringen som trenger det, med begrunnelse:
   eksakt før- og etter-verdi
 * `apps.*.required` og `mustEqual`: innstillinger som alltid må finnes og verdier som må holde
 * `noise`: egenskaper plattformen fyller inn som what-if alltid viser (med begrunnelse)
+* `defaults`: verdier plattformen rapporterer for egenskaper koden ikke setter: standard for subnett og siteConfig, og
+  `authSettingsV2.<app>`, de live-only bladene i Easy Auth som er plattformstandard. Easy Auth erstattes som helhet, så alt live
+  som ikke er deklarert og ikke står her stopper (`AUTH-LIVE-ONLY`)
 * `rbac.knownAssignments` og `identities.known`: gjennomgåtte rolletildelinger, identiteter og federated credentials. Nye
   tildelinger eller credentials live som ikke står her stopper gaten (`RBAC-UNREVIEWED`, `FIC-UNREVIEWED`)
 

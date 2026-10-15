@@ -16,6 +16,27 @@
     "siteConfig": {
       "ipSecurityRestrictionsDefaultAction": "Allow",
       "scmIpSecurityRestrictionsDefaultAction": "Allow"
+    },
+    "authSettingsV2": {
+      "app-invi-admin-prod-001": {
+        "clearInboundClaimsMapping": "false",
+        "httpSettings.forwardProxy.convention": "NoProxy",
+        "identityProviders.apple.enabled": true,
+        "identityProviders.azureActiveDirectory.login.disableWWWAuthenticate": false,
+        "identityProviders.facebook.enabled": true,
+        "identityProviders.gitHub.enabled": true,
+        "identityProviders.google.enabled": true,
+        "identityProviders.legacyMicrosoftAccount.enabled": true,
+        "identityProviders.twitter.enabled": true,
+        "login.cookieExpiration.convention": "FixedTime",
+        "login.cookieExpiration.timeToExpiration": "08:00:00",
+        "login.nonce.nonceExpirationInterval": "00:05:00",
+        "login.nonce.validateNonce": true,
+        "login.preserveUrlFragmentsForLogins": false,
+        "login.tokenStore.tokenRefreshExtensionHours": 72,
+        "prmConfig.disableMetadata": false,
+        "prmConfig.hideAuthorizationServers": false
+      }
     }
   },
   "apps": {

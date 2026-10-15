@@ -358,3 +358,37 @@ test("verify-secure-parameters never echoes the compared values", () => {
   }
   assert.ok(/LIVE_VALUE="\$live_value" SHELL_VALUE="\$shell_value" node/.test(source), "values must reach node through its environment");
 });
+
+// ---- Easy Auth: the resource replaces the whole configuration ----------------------------------------------------------
+const authWorld = (liveProps, baseline) =>
+  mutate((w) => {
+    w.desiredResources.push({ type: "Microsoft.Web/sites/config", name: "app-test/authsettingsV2", properties: { platform: { enabled: true } } });
+    w.whatif.changes.push({ resourceId: "a", type: "Microsoft.Web/sites/config", name: "app-test/authsettingsV2", changeType: "NoChange" });
+    w.live.apps["app-test"].authsettingsv2 = { properties: { platform: { enabled: true }, ...liveProps } };
+    if (baseline) w.manifest.defaults.authSettingsV2 = { "app-test": baseline };
+  });
+
+test("Easy Auth: a setting only production has is a customisation that the deployment would remove", () => {
+  const custom = { login: { allowedExternalRedirectUrls: ["https://x.example"] } };
+  failsWith(run(authWorld(custom)), "AUTH-LIVE-ONLY");
+  // accepted only when the manifest records exactly that value as a known default or reviewed customisation
+  const known = run(authWorld(custom, { "login.allowedExternalRedirectUrls": ["https://x.example"] }));
+  assert.equal(known.verdict, "PASS", JSON.stringify(ids(known)));
+  failsWith(run(authWorld({ login: { allowedExternalRedirectUrls: ["https://y.example"] } }, { "login.allowedExternalRedirectUrls": ["https://x.example"] })), "AUTH-LIVE-ONLY");
+  // unset values are the same as not set
+  const unset = run(authWorld({ login: { allowedExternalRedirectUrls: [], routes: null } }));
+  assert.equal(unset.verdict, "PASS", JSON.stringify(ids(unset)));
+});
+
+// ---- manifest hygiene ---------------------------------------------------------------------------------------------------
+test("every allowedChanges entry must be one of the documented shapes", () => {
+  const withEntry = (entry) => run(mutate((w) => w.manifest.deployments.main.allowedChanges.push(entry)));
+  const why = "reviewed and approved in the PR that adds this entry";
+  failsWith(withEntry({ resource: "app-test", property: "siteConfig.alwaysOn" }), "MANIFEST-ENTRY-SHAPE");
+  failsWith(withEntry({ resource: "app-test", property: "some thing with spaces", why }), "MANIFEST-ENTRY-SHAPE");
+  failsWith(withEntry({ resource: "app-test", property: "siteConfig.alwaysOn", why, unexpected: 1 }), "MANIFEST-ENTRY-SHAPE");
+  failsWith(withEntry({ whatif: true, resource: "x", property: "properties.a", why }), "MANIFEST-ENTRY-SHAPE");
+  failsWith(withEntry({ property: "siteConfig.alwaysOn", why }), "MANIFEST-ENTRY-SHAPE");
+  const ok = withEntry({ resource: "app-test", property: "setting:SOME_NAME", before: "a", after: "b", why });
+  assert.ok(!ids(ok).includes("MANIFEST-ENTRY-SHAPE"), JSON.stringify(ids(ok)));
+});

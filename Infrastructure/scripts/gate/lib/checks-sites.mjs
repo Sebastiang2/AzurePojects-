@@ -301,6 +301,30 @@ export function checkAuthSettings(ctx) {
       }
     };
     walk(auth.properties, current, "");
+
+    // The resource replaces the WHOLE configuration, so a setting that production has and the template does not declare is
+    // reset by the deployment. The platform reports many defaults, so the manifest records the accepted live-only leaves per
+    // site (defaults.authSettingsV2); anything else is a customisation that the deployment would remove.
+    const baseline = ctx.manifest.defaults?.authSettingsV2?.[site] ?? {};
+    const leaves = [];
+    const collect = (want, have, path) => {
+      for (const [key, value] of Object.entries(have ?? {})) {
+        const p = path ? `${path}.${key}` : key;
+        const declared = want?.[key];
+        if (value && typeof value === "object" && !Array.isArray(value)) collect(declared && typeof declared === "object" ? declared : undefined, value, p);
+        else if (declared === undefined) leaves.push([p, value]);
+      }
+    };
+    collect(auth.properties, current, "");
+    for (const [p, value] of leaves) {
+      const unset = value === null || value === "" || (Array.isArray(value) && value.length === 0);
+      if (unset) continue;
+      if (Object.hasOwn(baseline, p) && JSON.stringify(baseline[p]) === JSON.stringify(value)) {
+        findings.count("authLiveOnlyDefaults");
+        continue;
+      }
+      findings.fail("AUTH-LIVE-ONLY", site, `Easy Auth ${p} is ${JSON.stringify(value)} in production and not in the template: the deployment replaces the whole configuration and would remove it`, { path: p });
+    }
   }
 }
 

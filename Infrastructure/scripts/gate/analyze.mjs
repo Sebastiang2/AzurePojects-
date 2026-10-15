@@ -53,6 +53,23 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
   const deployment = manifest.deployments?.[deploymentKey];
   if (!deployment) return { fatal: `deployment ${JSON.stringify(deploymentKey)} is not in the manifest (known: ${Object.keys(manifest.deployments ?? {}).join(", ")})` };
 
+  // A manifest entry that matches no check silently approves nothing (or the wrong thing): every allowedChanges entry has to
+  // be one of the documented shapes (see lib/checks-sites.mjs).
+  const shapeProblems = [];
+  (deployment.allowedChanges ?? []).forEach((c, i) => {
+    const where = `deployments.${deploymentKey}.allowedChanges[${i}]`;
+    const known = new Set(["resource", "property", "before", "after", "why", "whatif", "type"]);
+    for (const k of Object.keys(c ?? {})) if (!known.has(k)) shapeProblems.push(`${where}: unknown key ${JSON.stringify(k)}`);
+    if (typeof c?.resource !== "string" || !c.resource) shapeProblems.push(`${where}: "resource" is required`);
+    if (typeof c?.property !== "string" || !c.property) shapeProblems.push(`${where}: "property" is required`);
+    if (typeof c?.why !== "string" || c.why.trim().length < 10) shapeProblems.push(`${where}: "why" must explain the approval`);
+    if (c?.whatif !== undefined && (c.whatif !== true || typeof c.type !== "string")) shapeProblems.push(`${where}: a what-if entry needs "whatif": true and a "type"`);
+    if (c?.whatif === undefined && typeof c?.property === "string" && !/^(setting:\S+|(scm)?ipSecurityRestrictions:.+|siteConfig\.[A-Za-z0-9]+|[A-Za-z][A-Za-z0-9]*)$/.test(c.property)) {
+      shapeProblems.push(`${where}: property ${JSON.stringify(c.property)} is none of setting:<NAME>, ipSecurityRestrictions:<rule>, siteConfig.<name> or a site property`);
+    }
+  });
+  for (const p of shapeProblems) findings.fail("MANIFEST-ENTRY-SHAPE", "manifest", p);
+
   const context = readJson(join(work, "context.json"), problems);
   if (!context) return { fatal: "context.json is missing or unreadable" };
 

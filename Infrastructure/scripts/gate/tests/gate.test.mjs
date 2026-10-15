@@ -49,7 +49,7 @@ test("a new setting not listed in the manifest is rejected, and accepted when li
 test("a changed non-secret value is rejected unless the manifest names it with before and after", () => {
   const change = (w) => (w.desiredResources.find((x) => x.name === "app-test/appsettings").properties.A = "2");
   failsWith(run(mutate(change)), "BAG-VALUE-CHANGE");
-  const ok = run(mutate((w) => { change(w); w.manifest.deployments.main.allowedChanges = [{ resource: "app-test", property: "setting:A", before: "1", after: "2", why: "test" }]; }));
+  const ok = run(mutate((w) => { change(w); w.manifest.deployments.main.allowedChanges = [{ resource: "app-test", property: "setting:A", before: "1", after: "2", why: "test: approved change of a plain setting" }]; }));
   assert.equal(ok.verdict, "PASS");
 });
 
