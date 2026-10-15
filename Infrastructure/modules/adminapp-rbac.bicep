@@ -34,6 +34,9 @@ param instance string
 @minLength(1)
 param secretNames string[]
 
+@description('Secret name -> name (GUID) of an assignment that already exists for the admin identity on that secret. Adopts a hand-made assignment instead of colliding with it.')
+param existingAssignmentNames object = {}
+
 var keyVaultName = 'kv-${workloadName}-${environment}-${instance}'
 var adminAppName = 'app-${workloadName}-admin-${environment}-${instance}'
 
@@ -49,6 +52,7 @@ module secretAccess 'rbac-keyvault-secret-scope.bicep' = [
       keyVaultName: keyVaultName
       secretName: secretName
       principalId: adminApp.identity.principalId
+      existingAssignmentName: existingAssignmentNames[?secretName] ?? ''
     }
   }
 ]

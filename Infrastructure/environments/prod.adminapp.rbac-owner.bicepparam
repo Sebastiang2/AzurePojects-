@@ -32,4 +32,11 @@ param instance = '001'
 
 param secretNames = [
   'admin-publishing-api-key'
+  'admin-publishing-api-key-test'
 ]
+
+// The assignment for the test key was made by hand (2026-10-06). Azure allows one assignment per principal, role and
+// scope, so it is adopted by name instead of being created a second time.
+param existingAssignmentNames = {
+  'admin-publishing-api-key-test': '03e6c59f-9327-4311-9f66-e6045e5f7abb'
+}
