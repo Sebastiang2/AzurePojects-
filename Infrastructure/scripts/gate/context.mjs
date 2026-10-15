@@ -4,7 +4,7 @@
 //
 //   node context.mjs --repo-root <dir> --manifest <file> --deployment <key> --work <dir> --steps compile=0,lint=0,...
 //        --subscription <id> --tenant <id> --resource-group <name> --resource-group-exists true|false
-//        --live-collected-at <iso> [--allow-dirty]
+//        --live-collected-at <iso> [--allow-dirty] [--placeholders A,B] [--secure-presence A=1,B=0]
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join, resolve, relative, posix } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -61,6 +61,20 @@ for (const dir of ["Infrastructure/scripts/gate", "Infrastructure/scripts/gate/l
   if (!existsSync(abs)) continue;
   for (const f of readdirSync(abs).filter((n) => /\.(mjs|sh)$/.test(n)).sort()) gateScripts[`${dir}/${f}`] = sha256(readFileSync(join(abs, f)));
 }
+// The orchestrators are part of what the approval covers.
+for (const f of ["preflight.sh", "deploy.sh", "validate.sh"]) {
+  const h = hashFile(`Infrastructure/scripts/${f}`);
+  if (h) gateScripts[`Infrastructure/scripts/${f}`] = h;
+}
+
+// What preflight.sh actually did with the environment: the names it overrode with placeholders and whether each secure
+// parameter had a value in the caller's shell (presence only; values are never read here).
+const placeholders = String(args.placeholders ?? "").split(",").filter(Boolean);
+const presence = {};
+for (const pair of String(args["secure-presence"] ?? "").split(",").filter(Boolean)) {
+  const [name, present] = pair.split("=");
+  presence[name] = present === "1";
+}
 
 const steps = {};
 for (const pair of String(args.steps ?? "").split(",").filter(Boolean)) {
@@ -95,7 +109,13 @@ const context = {
     requireClean: args["allow-dirty"] === true ? false : true,
   },
   steps,
-  secureEnvironment: { mode: args["secure-mode"] ?? "placeholders", names: deployment.secureEnvironment ?? [] },
+  // "placeholders" only when every environment variable the parameter file reads was overridden by preflight.sh.
+  secureEnvironment: {
+    mode: envReads.every((n) => placeholders.includes(n)) ? "placeholders" : "unverified",
+    names: deployment.secureEnvironment ?? [],
+    placeholders,
+    presence,
+  },
   liveCollectedAt: args["live-collected-at"] ?? null,
   liveCalls,
 };

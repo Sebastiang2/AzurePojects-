@@ -7,8 +7,10 @@
 # and every call is logged in <outDir>/calls.json with its exit code, so that a call that failed (missing permission,
 # throttling, outage) is visible to the gate as missing evidence and never as "nothing there".
 #
-# Secret handling: app settings and connection strings are piped straight into a sanitizer and never touch disk raw;
-# other listings pass through strip-sensitive.mjs. Key Vault secrets are never read, not even their names.
+# Secret handling: app settings are piped straight into a sanitizer and never touch disk raw; EVERY other listing passes
+# through strip-sensitive.mjs before it is written (a site, a hostname binding, an access restriction or a diagnostic setting
+# can carry a token, a header value or a key even when today's does not). Key Vault secrets are never read, not even their
+# names. The scrubber is fail-closed: a listing it cannot parse is a failed call, never an empty file.
 set -u
 export MSYS_NO_PATHCONV=1
 
@@ -35,15 +37,9 @@ native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else pri
 
 record() { printf '%s\t%s\n' "$1" "$2" >>"$CALLS"; }
 
-# call <name> <command...>  : stdout -> <name>.json
+# call <name> <command...> : stdout -> strip-sensitive -> <name>.json. The recorded status is the command's own when it
+# failed, the scrubber's otherwise.
 call() {
-  local name="$1"; shift
-  "$@" >"$OUT/$name.json" 2>"$OUT/$name.err"
-  record "$name" "$?"
-}
-
-# call_stripped <name> <command...> : stdout -> strip-sensitive -> <name>.json
-call_stripped() {
   local name="$1"; shift
   "$@" 2>"$OUT/$name.err" | node "$STRIP" >"$OUT/$name.json"
   local rc=("${PIPESTATUS[@]}")
@@ -61,13 +57,13 @@ call_bag() {
 REST="https://management.azure.com/subscriptions/$SUB/resourceGroups/$RG/providers"
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-call account                az account show --subscription "$SUB" -o json
-call resources              az resource list --subscription "$SUB" -o json
+call         account               az account show --subscription "$SUB" --query "{id:id, tenantId:tenantId, name:name, state:state}" -o json
+call         resources             az resource list --subscription "$SUB" -o json
 
 for app in "${APPS[@]}"; do
   site="$REST/Microsoft.Web/sites/$app"
   call         "apps/$app.show"                   az webapp show -g "$RG" -n "$app" --subscription "$SUB" -o json
-  call_stripped "apps/$app.config"                az webapp config show -g "$RG" -n "$app" --subscription "$SUB" -o json
+  call         "apps/$app.config"                 az webapp config show -g "$RG" -n "$app" --subscription "$SUB" -o json
   call_bag     "apps/$app.appsettings"            az webapp config appsettings list -g "$RG" -n "$app" --subscription "$SUB" -o json
   call         "apps/$app.kvrefs"                 az rest --method get --url "$site/config/configreferences/appsettings?api-version=2022-03-01" -o json
   call         "apps/$app.slots"                  az webapp deployment slot list -g "$RG" -n "$app" --subscription "$SUB" -o json
@@ -77,12 +73,12 @@ for app in "${APPS[@]}"; do
   call         "apps/$app.publishpolicy.scm"      az rest --method get --url "$site/basicPublishingCredentialsPolicies/scm?api-version=2024-04-01" -o json
   call         "apps/$app.hostnamebindings"       az rest --method get --url "$site/hostNameBindings?api-version=2024-04-01" -o json
   call         "apps/$app.networkconfig"          az rest --method get --url "$site/config/virtualNetwork?api-version=2024-04-01" -o json
-  call_stripped "apps/$app.authsettingsv2"        az rest --method get --url "$site/config/authsettingsV2?api-version=2024-04-01" -o json
+  call         "apps/$app.authsettingsv2"         az rest --method get --url "$site/config/authsettingsV2?api-version=2024-04-01" -o json
   call         "apps/$app.diag"                   az monitor diagnostic-settings list --resource "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.Web/sites/$app" -o json
 done
 
 call         plan                  az appservice plan show -g "$RG" -n asp-invi-prod-001 --subscription "$SUB" -o json
-call_stripped certs-detail         az rest --method get --url "$REST/Microsoft.Web/certificates?api-version=2024-04-01" -o json
+call         certs-detail          az rest --method get --url "$REST/Microsoft.Web/certificates?api-version=2024-04-01" -o json
 
 call         vnet                  az network vnet show -g "$RG" -n vnet-invi-prod-001 --subscription "$SUB" -o json
 call         subnets               az network vnet subnet list -g "$RG" --vnet-name vnet-invi-prod-001 --subscription "$SUB" -o json
@@ -97,7 +93,7 @@ if [ -s "$OUT/private-dns-zones.json" ]; then
   done
 fi
 
-call_stripped mysql                az mysql flexible-server show -g "$RG" -n mysql-invi-prod-001 --subscription "$SUB" -o json
+call         mysql                 az mysql flexible-server show -g "$RG" -n mysql-invi-prod-001 --subscription "$SUB" -o json
 call         keyvault              az keyvault show -n kv-invi-prod-001 --subscription "$SUB" -o json
 call         keyvault.diag         az monitor diagnostic-settings list --resource "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001" -o json
 call         mysql.diag            az monitor diagnostic-settings list --resource "/subscriptions/$SUB/resourceGroups/$RG/providers/Microsoft.DBforMySQL/flexibleServers/mysql-invi-prod-001" -o json

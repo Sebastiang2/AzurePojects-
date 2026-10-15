@@ -74,7 +74,18 @@ mkdir -p "$WORK/live" "$WORK/eval"
 WORK_N="$(to_native "$WORK")"
 
 # Secure parameters: placeholders only, whatever the caller's shell holds. A real value must never reach a gate run.
-for name in $ALL_SECURE; do export "$name=__GATE:${name}__"; done
+# Every variable the manifest declares AND every variable the parameter file actually reads is overridden, so a variable that
+# is missing from the manifest cannot slip through with its real value (the gate then stops on ENV-READ-UNDECLARED).
+PARAM_READS="$(node "$(to_native "$GATE/env-reads.mjs")" "$(to_native "$REPO_ROOT/$PARAMETERS")")" || { echo "preflight: could not read the parameter file" >&2; exit 2; }
+ALL_NAMES="$(printf '%s\n' $ALL_SECURE $PARAM_READS | sort -u)"
+PRESENCE=""   # NAME=1/0: whether the deploying shell has a value (presence only; the value itself is never looked at)
+PLACEHOLDERS=""
+for name in $ALL_NAMES; do
+  if [ -n "$(printf '%s' "${!name:-}" | tr -d '[:space:]')" ]; then present=1; else present=0; fi
+  PRESENCE="${PRESENCE:+$PRESENCE,}$name=$present"
+  PLACEHOLDERS="${PLACEHOLDERS:+$PLACEHOLDERS,}$name"
+  export "$name=__GATE:${name}__"
+done
 
 echo "== safety gate: $DEPLOYMENT"
 echo "   subscription $SUB, resource group $RG"
@@ -102,9 +113,16 @@ if [ -n "$ACCOUNT_SUB" ] && az group show -n "$RG" --subscription "$SUB" --only-
 # ---- 2. compile --------------------------------------------------------------------------------------------------------
 echo "-- compile"
 (cd "$REPO_ROOT/Infrastructure" && az bicep build --file "$(to_native "$REPO_ROOT/$TEMPLATE")" --stdout >/dev/null 2>"$WORK/compile.err"); step compile "$?"
-lint_out="$(cd "$REPO_ROOT/Infrastructure" && az bicep lint --file "$(to_native "$REPO_ROOT/$TEMPLATE")" 2>&1 | grep -v 'new Bicep release' || true)"
-lint_errors="$(printf '%s\n' "$lint_out" | grep -c ' : Error ' || true)"
-if [ "${lint_errors:-0}" -gt 0 ]; then step lint 1; printf '%s\n' "$lint_out" | grep ' : Error ' | head -20; else step lint 0; fi
+# Lint passes only if the command itself succeeded (exit 0: warnings are allowed, errors and crashes are not).
+(cd "$REPO_ROOT/Infrastructure" && az bicep lint --file "$(to_native "$REPO_ROOT/$TEMPLATE")" >"$WORK/lint.out" 2>&1); lint_rc=$?
+lint_errors="$(grep -c ' : Error ' "$WORK/lint.out" || true)"
+if [ "$lint_rc" -ne 0 ] || [ "${lint_errors:-0}" -gt 0 ]; then
+  step lint 1
+  grep ' : Error ' "$WORK/lint.out" | head -20
+  [ "$lint_rc" -ne 0 ] && [ "${lint_errors:-0}" -eq 0 ] && echo "   ! az bicep lint exited with $lint_rc and printed no error line (the lint did not run)"
+else
+  step lint 0
+fi
 (cd "$REPO_ROOT/Infrastructure" && az bicep build-params --file "$(to_native "$REPO_ROOT/$PARAMETERS")" --stdout >/dev/null 2>"$WORK/params.err"); step params "$?"
 
 # ---- 3. offline evaluation ---------------------------------------------------------------------------------------------
@@ -113,7 +131,7 @@ rm -rf "$WORK/eval"; mkdir -p "$WORK/eval"
 cp -r "$REPO_ROOT/Infrastructure" "$WORK/eval/Infrastructure"
 # Evaluation copy only: without @secure() the placeholders flow through union()/if() so the whole settings bag can be
 # evaluated. The copy is never deployed.
-find "$WORK/eval/Infrastructure" -name '*.bicep' -print0 | xargs -0 sed -i -E 's/@secure\(\)//g'
+node "$(to_native "$GATE/strip-secure.mjs")" "$(to_native "$WORK/eval/Infrastructure")" >/dev/null
 # The lint configuration would reject the copy (secrets without @secure()); lint is judged on the real files in step 2.
 rm -f "$WORK/eval/Infrastructure/bicepconfig.json"
 PARAM_EVAL="$WORK/eval/$PARAMETERS"
@@ -143,8 +161,7 @@ console.log([...names].join(" "));
 if [ -n "$REUSE_LIVE" ]; then
   echo "   (reusing live evidence from $REUSE_LIVE)"
   cp -r "$REUSE_LIVE/." "$WORK/live/"
-  LIVE_AT="$(tr -d '
-' <"$WORK/live/collected-at.txt")"
+  LIVE_AT="$(tr -d '\r\n' <"$WORK/live/collected-at.txt")"
   step live 0
 else
   LIVE_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -155,12 +172,13 @@ fi
 # ---- 6. analyse --------------------------------------------------------------------------------------------------------
 CTX_ARGS=(--repo-root "$(to_native "$REPO_ROOT")" --manifest "$MANIFEST_N" --deployment "$DEPLOYMENT" --work "$WORK_N"
           --steps "$STEPS" --subscription "$ACCOUNT_SUB" --tenant "$ACCOUNT_TENANT" --resource-group "$RG"
-          --resource-group-exists "$RG_EXISTS" --live-collected-at "$LIVE_AT")
+          --resource-group-exists "$RG_EXISTS" --live-collected-at "$LIVE_AT"
+          --placeholders "$PLACEHOLDERS" --secure-presence "$PRESENCE")
 [ "$ALLOW_DIRTY" -eq 1 ] && CTX_ARGS+=(--allow-dirty)
 node "$(to_native "$GATE/context.mjs")" "${CTX_ARGS[@]}" || exit 2
 
 node "$(to_native "$GATE/analyze.mjs")" --work "$WORK_N" --manifest "$MANIFEST_N" --deployment "$DEPLOYMENT" \
-  --out "$WORK_N/report.json" --md "$WORK_N/report.md" "${NOW_ARGS[@]}"
+  --out "$WORK_N/report.json" --md "$WORK_N/report.md" ${NOW_ARGS[@]+"${NOW_ARGS[@]}"}
 rc=$?
 [ -n "$REPORT" ] && [ -f "$WORK/report.json" ] && cp "$WORK/report.json" "$REPORT"
 echo

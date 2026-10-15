@@ -3,10 +3,8 @@
 // ("plain") or as a Key Vault reference (a reference string is not a secret). Secret-like literals keep no value,
 // no length and no fingerprint: presence is all that is needed to tell whether a deployment would delete them.
 import { readFileSync } from "node:fs";
+import { looksSecret } from "./lib/secrets.mjs";
 
-const NAME_SECRET = /(secret|password|passwd|pwd|apikey|api_key|key$|token|authorization|connectionstring|salt|signing|private_key|credential|\bsas\b|pat$)/i;
-const VALUE_SECRET = /(password=|pwd=|accountkey=|sharedaccesssignature|[?&]sig=|bearer\s|-----BEGIN|:\/\/[^\/\s:@]+:[^\/\s@]+@)/i;
-const OPAQUE = /^[A-Za-z0-9+\/=_-]{24,}$/;
 const KV_REF = /^@Microsoft\.KeyVault\(/;
 const AI_CS = /(^InstrumentationKey=|;IngestionEndpoint=)/;
 
@@ -28,7 +26,7 @@ const out = entries.map((e) => {
   if (value === "") kind = "empty";
   else if (KV_REF.test(value)) kind = "keyvault-reference";
   else if (AI_CS.test(value)) kind = "ai-connection-string";
-  else if (NAME_SECRET.test(e.name) || VALUE_SECRET.test(value) || OPAQUE.test(value)) kind = "secret-literal";
+  else if (looksSecret(e.name, value)) kind = "secret-literal";
   else kind = "plain";
   const keep = kind === "plain" || kind === "keyvault-reference";
   return { name: e.name, slotSetting: !!e.slotSetting, kind, value: keep ? value : undefined };

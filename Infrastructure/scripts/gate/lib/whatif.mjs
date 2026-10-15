@@ -36,6 +36,13 @@ export function evaluateWhatIf(ctx) {
     else findings.fail("WHATIF-COVERAGE", `${r.type} ${r.name}`, "declared in the template but missing from the what-if result: the result is incomplete");
   }
 
+  // Approved resources: a deployment may only change the resources its manifest entry lists. A change to anything else is a
+  // change to a resource nobody approved for this deployment, even if the template declares it.
+  if (!Array.isArray(deployment.touches)) {
+    findings.fail("WHATIF-TOUCHES-MISSING", "manifest", "the manifest does not list the resources this deployment may change (touches)");
+  }
+  const unsupportedByModule = {};
+
   const noiseCounts = {};
   const countNoise = (rule) => {
     const key = `${rule.type} ${rule.paths.join(", ")}`;
@@ -44,6 +51,11 @@ export function evaluateWhatIf(ctx) {
 
   for (const change of whatif.changes) {
     const subject = `${change.type} ${change.name}`;
+    const judgedByModule = change.changeType === "Unsupported" || change.changeType === "Deploy";
+    if (Array.isArray(deployment.touches) && change.changeType !== "NoChange" && change.changeType !== "Ignore" && !judgedByModule) {
+      const approved = deployment.touches.some((t) => lc(t.type) === lc(change.type) && globToRegExp(t.name).test(change.name));
+      if (!approved) findings.fail("WHATIF-RESOURCE-NOT-APPROVED", subject, `the deployment would ${String(change.changeType).toLowerCase()} a resource that is not in this deployment's approved list (touches)`);
+    }
     switch (change.changeType) {
       case "NoChange":
       case "Ignore":
@@ -60,6 +72,7 @@ export function evaluateWhatIf(ctx) {
       case "Unsupported":
       case "Deploy": {
         const module = /resources\.([A-Za-z0-9_-]+)\.properties\.template/.exec(change.unsupportedReason ?? "")?.[1];
+        unsupportedByModule[module] = (unsupportedByModule[module] ?? 0) + 1;
         const allowance = (deployment.allowedUnsupported ?? []).find((u) => u.module && lc(u.module) === lc(module));
         if (allowance) findings.allowed("WHATIF-UNSUPPORTED", `${change.changeType} (module ${module})`, `not analysable by what-if; verified by other checks (${allowance.why ?? "listed in manifest"})`);
         else findings.fail("WHATIF-UNSUPPORTED", subject, `what-if cannot analyse this resource and the manifest does not cover it${module ? ` (module ${module})` : ""}`);
@@ -147,6 +160,13 @@ export function evaluateWhatIf(ctx) {
       }
       default:
         findings.fail("WHATIF-UNKNOWN-CHANGETYPE", subject, `unknown change type ${JSON.stringify(change.changeType)}`);
+    }
+  }
+  // An allowed module may only contain as many unanalysable resources as the manifest says; more means something was added.
+  for (const u of deployment.allowedUnsupported ?? []) {
+    const n = unsupportedByModule[u.module] ?? 0;
+    if (u.count !== undefined && n > u.count) {
+      findings.fail("WHATIF-UNSUPPORTED-COUNT", `module ${u.module}`, `what-if cannot analyse ${n} resources in this module and the manifest approved ${u.count}`);
     }
   }
   return { noise: noiseCounts, counts: whatif.counts ?? {} };

@@ -32,12 +32,17 @@ for template in main.bicep modules/*.bicep; do
 done
 
 note "== lint (bicepconfig.json): errors fail, warnings are shown"
+# The exit status of `az bicep lint` decides, not only the text: a linter that did not run (Bicep CLI missing, template
+# unreadable) prints no "Error" lines, and counting lines alone would report that as a pass.
 for template in main.bicep modules/*.bicep; do
-  output="$(az bicep lint --file "$template" 2>&1 | grep -v 'new Bicep release' || true)"
+  output="$(az bicep lint --file "$template" 2>&1)"; lint_rc=$?
+  output="$(printf '%s\n' "$output" | grep -v 'new Bicep release')"
   errors="$(printf '%s\n' "$output" | grep -c ' : Error ' || true)"
   warnings="$(printf '%s\n' "$output" | grep -c ' : Warning ' || true)"
   if [ "$errors" -gt 0 ]; then
     fail "lint $template ($errors error(s))"; printf '%s\n' "$output" | grep ' : Error ' | sed 's/^/      /'
+  elif [ "$lint_rc" -ne 0 ]; then
+    fail "lint $template did not complete (exit $lint_rc)"; printf '%s\n' "$output" | sed 's/^/      /'
   else
     ok "lint $template ($warnings warning(s))"
   fi

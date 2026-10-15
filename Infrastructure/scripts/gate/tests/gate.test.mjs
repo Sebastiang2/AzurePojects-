@@ -142,6 +142,7 @@ test("platform noise listed in the manifest is accepted; an unlisted change is n
   const noisy = (path) => (w) => {
     w.whatif.changes.push({ resourceId: "n", type: "Microsoft.Insights/components", name: "ai", changeType: "Modify", deltas: [{ path, op: "Create" }] });
     w.desiredResources.push({ type: "Microsoft.Insights/components", name: "ai", properties: {} });
+    w.manifest.deployments.main.touches.push({ type: "Microsoft.Insights/components", name: "ai" });
   };
   assert.equal(run(mutate(noisy("properties.Flow_Type"))).verdict, "PASS");
   failsWith(run(mutate(noisy("properties.RetentionInDays"))), "WHATIF-UNEXPECTED-CHANGE");

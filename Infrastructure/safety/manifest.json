@@ -494,7 +494,8 @@
       "allowedUnsupported": [
         {
           "module": "rbac",
-          "why": "role assignments named with guid() on a runtime principal; verified by the RBAC checks against live"
+          "why": "role assignments named with guid() on a runtime principal; verified by the RBAC checks against live",
+          "count": 2
         }
       ],
       "allowedNewSettings": {
@@ -504,7 +505,57 @@
       },
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.DBforMySQL/flexibleServers",
+          "name": "mysql-invi-prod-001"
+        },
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-data-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-auth-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Network/privateEndpoints",
+          "name": "pe-invi-prod-001-kv"
+        },
+        {
+          "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+          "name": "pe-invi-prod-001-kv/default"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-data-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-auth-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-data-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-auth-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/networkConfig",
+          "name": "app-invi-data-api-prod-001/virtualNetwork"
+        },
+        {
+          "type": "Microsoft.Web/sites/networkConfig",
+          "name": "app-invi-auth-api-prod-001/virtualNetwork"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "inviMetrics"
+        }
+      ]
     },
     "adminapp-a": {
       "description": "Admin app (Next.js) with its Application Insights, settings, Easy Auth and diagnostics. Contributor is enough",
@@ -532,6 +583,28 @@
           "why": "the resource is conditional on a secure parameter, which what-if cannot evaluate",
           "verifiedBy": "AUTH-CHANGE (declared Easy Auth values against live)"
         }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-admin-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-admin-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-admin-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-admin-prod-001/authsettingsV2"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-admin-prod-001"
+        }
       ]
     },
     "adminapp-b-rbac": {
@@ -544,13 +617,20 @@
       "allowedUnsupported": [
         {
           "module": "secretAccess",
-          "why": "role assignment named with guid() on the admin app's principal; verified by the RBAC checks against live"
+          "why": "role assignment named with guid() on the admin app's principal; verified by the RBAC checks against live",
+          "count": 1
         }
       ],
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "03e6c59f-9327-4311-9f66-e6045e5f7abb"
+        }
+      ]
     },
     "adminapp-c-domain": {
       "description": "admin.cetchapp.com host name binding and managed certificate",
@@ -563,7 +643,8 @@
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": []
     },
     "swa-web": {
       "description": "Static Web App swa-invi-web-prod-001 (no custom domains)",
@@ -576,7 +657,13 @@
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites",
+          "name": "swa-invi-web-prod-001"
+        }
+      ]
     },
     "swa-domain-app-cetchapp-com": {
       "description": "app.cetchapp.com on swa-invi-web-prod-001",
@@ -589,7 +676,13 @@
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/app.cetchapp.com"
+        }
+      ]
     },
     "swa-domain-invi-lol": {
       "description": "invi.lol on swa-invi-web-prod-001",
@@ -602,7 +695,13 @@
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/invi.lol"
+        }
+      ]
     },
     "swa-domain-www-invi-lol": {
       "description": "www.invi.lol on swa-invi-web-prod-001",
@@ -615,7 +714,13 @@
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],
-      "residualRisks": []
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/www.invi.lol"
+        }
+      ]
     }
   }
 }

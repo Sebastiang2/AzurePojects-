@@ -11,9 +11,18 @@ deployes til produksjon, hva den kontrollerer, og, like viktig, hva den **ikke**
 # 1. Les-bare kontroll (ingen endring i Azure). Exit 0 = PASS, 1 = FAIL, 2 = kunne ikke kjøre (også FAIL).
 bash Infrastructure/scripts/preflight.sh --deployment main
 
-# 2. Utrulling: kjører gaten på nytt, viser hva du godkjenner, krever skrevet godkjenning, deployer, verifiserer etterpå.
+# 2. Prøvekjøring av utrullingen: alle kontroller og gaten, viser hva som ville blitt godkjent og hver grunn til at en
+#    ekte kjøring ville stoppet. Deployer aldri, trenger ikke terminal.
+bash Infrastructure/scripts/deploy.sh --deployment main --dry-run
+
+# 3. Utrulling: kjører gaten på nytt, viser hva du godkjenner, krever skrevet godkjenning, deployer, verifiserer etterpå.
 bash Infrastructure/scripts/deploy.sh --deployment main
+
+# 4. Hemmelige parametere (gaten kjører på plassholdere og kan ikke sjekke dem). Kjøres av den som deployer, i samme skall.
+bash Infrastructure/scripts/verify-secure-parameters.sh --deployment main
 ```
+
+Fremgangsmåten rundt (sikkerhetskopi, etterkontroll, rollback) står i [`deploy-runbook.md`](deploy-runbook.md).
 
 Nøkler (`--deployment`) står i `Infrastructure/safety/manifest.json`: `main`, `adminapp-a`, `adminapp-b-rbac`,
 `adminapp-c-domain`, `swa-web`, `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol`.
@@ -38,7 +47,12 @@ utrulling: `deploy.sh` kjører sin egen gate og krever ren arbeidskopi på `orig
 | 11 | Domener og sertifikatbindinger bevares | `BINDING-*`, `AUTH-CHANGE` (Easy Auth), `BINDING-UNMANAGED` (informasjon) |
 | 12 | Slots og SCM | `SLOT-*`, `SITE-PROP-CHANGE` (inkl. SCM-egenskaper), `ACCESS-RULE-*`, `PUBLISH-POLICY-CHANGE` |
 | 13 | Manglende rettigheter, ufullstendige resultater, uavklart drift | `EVIDENCE-*` (manglende/ulesbare data, feilet kall, for gammelt grunnlag), `STEP-*` |
-| 14 | Eksplisitt godkjenning | `deploy.sh`: skrevet `DEPLOY <nøkkel> <digest>`; godkjenningen er bundet til digesten av filene og grunnlaget |
+| 14 | Eksplisitt godkjenning | `deploy.sh`: skrevet `DEPLOY <nøkkel> <digest>`; godkjenningen er bundet til digesten av filene og grunnlaget, og grunnlaget må fortsatt være yngre enn grensen *etter* at godkjenningen er skrevet |
+| 15 | Bare godkjente ressurser endres | `WHATIF-RESOURCE-NOT-APPROVED` (en endring i en ressurs som ikke står i utrullingens `touches`), `WHATIF-TOUCHES-MISSING` (manifestet har ingen liste: ingenting er godkjent) |
+| 16 | Uanalyserbare what-if-oppføringer | `WHATIF-UNSUPPORTED` (modulen er ikke godkjent), `WHATIF-UNSUPPORTED-COUNT` (flere enn manifestet godkjente: en ny ressurs har sneket seg inn i en godkjent modul) |
+| 17 | Hemmelige parametere er målt, ikke antatt | `SECURE-ENV` (parameterfilen leser en variabel preflight ikke overstyrte med plassholder), `ENV-READ-UNDECLARED`, `SECURE-MISSING` (variabel mangler i skallet som deployer; kun informasjon i en lokal gjennomgang) |
+| 18 | Slots følger samme regler som hovedsiden | `SLOT-BAG-REQUIRED-MISSING`, `SLOT-BAG-INVARIANT` (WebDrafts kan ikke slås på i en slot), `SLOT-BAG-SECURE-FEED`, `SLOT-BAG-SECRET-LITERAL` |
+| 19 | Store/små bokstaver | `appCommandLine`, `linuxFxVersion`, `healthCheckPath` og app setting-verdier sammenlignes eksakt (Linux skiller); bare `true`/`false` og oppregningsverdier sammenlignes uten hensyn til store/små |
 
 ### De tre uavhengige signalene
 
@@ -48,8 +62,10 @@ Gaten stoler ikke på ett signal alene:
    (`__GATE:<MILJØVARIABEL>__`), og `@secure()` fjernes i en *kopi* som bare brukes til evalueringen, slik at hele
    innstillings-bagen (`union()`/`if()`) kan evalueres. Kopien deployes aldri.
 2. **Live tilstand**: read-only oppslag (`show`/`list`/`GET`). App settings går rett i en sanitiserer: navn, art og
-   ikke-hemmelige verdier beholdes, hemmelige literaler får verken verdi, lengde eller fingeravtrykk. Key Vault-secrets leses
-   aldri, heller ikke navnene.
+   ikke-hemmelige verdier beholdes, hemmelige literaler får verken verdi, lengde eller fingeravtrykk. *Alle andre* oppslag går
+   gjennom `strip-sensitive.mjs` før de skrives til disk (nøkler, tokens, passord, tilkoblingsstrenger, `machineKey`, lagrings-
+   og publiseringsdetaljer fjernes; navn som bare *beskriver* en hemmelighet, som `clientSecretSettingName`, beholdes). En
+   oppføring som ikke lar seg tolke er et feilet kall, ikke en tom fil. Key Vault-secrets leses aldri, heller ikke navnene.
 3. **what-if** mot produksjon, redusert i samme pipe til en liste uten hemmeligheter.
 
 Nested objekter (app settings-bag, `securityRules`, `subnets`) erstattes som helhet også i Incremental-modus. Derfor sammenlignes
@@ -60,6 +76,11 @@ de element for element mot live, uavhengig av hva what-if rapporterer.
 Alt gaten godtar som «forventet» står her og gjennomgås som kode. Det som ikke står der, stopper. Endre det i **samme PR** som
 endringen som trenger det, med begrunnelse:
 
+* `touches`: **de eneste ressursene utrullingen får endre** (type og navn, `*` bare som siste tegn). Alt annet i what-if som
+  ikke er `NoChange` eller støy stopper gaten. Listen vises i godkjenningen. En tom liste betyr at utrullingen ikke skal endre
+  noe; en *manglende* liste stopper.
+* `allowedUnsupported`: modulene hvis what-if-oppføringer gaten ikke kan analysere (`guid()`-rolletildelinger); `count` er
+  antallet manifestet godkjente, og flere enn det stopper.
 * `allowedCreates`: ressurser som får opprettes (for eksempel adopsjon av en håndlaget diagnostikkinnstilling)
 * `allowedNewSettings`, `allowedRemovedSettings`, `allowedChanges`: nye/fjernede/endrede app settings og egenskaper, med
   eksakt før- og etter-verdi
@@ -73,8 +94,11 @@ Manifestet bør kreve review av en som kan Azure-sikkerhet (for eksempel CODEOWN
 ## Hva gaten ikke kan kontrollere (rest-risiko som godkjenneren må kvittere)
 
 1. **Secure parameters.** MySQL-passord, RevenueCat-nøkler og Entra-klienthemmelighet er ugjennomsiktige: what-if kan ikke
-   sammenligne dem, og gaten leser dem aldri. En feil `MYSQL_ADMIN_PASSWORD` *endrer* databasepassordet; en feil RevenueCat-verdi
-   bryter kjøp. Verdiene må sjekkes utenfor gaten før godkjenning.
+   sammenligne dem, og gaten leser dem aldri (den kjører på plassholdere, og det *måles* at hver variabel parameterfilen leser
+   er overstyrt: `SECURE-ENV`). En feil `MYSQL_ADMIN_PASSWORD` *endrer* administratorpassordet, og begge API-ene kobler til som
+   administrator (`inviadmin`); en feil RevenueCat-verdi bryter kjøp. `verify-secure-parameters.sh` sammenligner RevenueCat- og
+   Entra-verdiene med produksjon (kun `MATCH`/`MISMATCH`), men MySQL-passordet kan ikke leses tilbake og må bekreftes på annen
+   måte (se [`deploy-runbook.md`](deploy-runbook.md) §2.3).
 2. **Restart.** Å skrive app settings restarter appene (kort avbrudd).
 3. **Key Vault.** Secret-navn og -verdier verifiseres ikke. Key Vault-referansene på de to API-ene vises med status
    `OtherReasons` (ikke løst av App Service); appene laster secrets selv via `KeyVault__Uri`.
@@ -100,16 +124,35 @@ Manifestet bør kreve review av en som kan Azure-sikkerhet (for eksempel CODEOWN
 ## Tester
 
 ```bash
-node --test Infrastructure/scripts/gate/tests/gate.test.mjs     # 54 tester, offline, syntetiske data
+node --test Infrastructure/scripts/gate/tests/*.test.mjs        # offline, syntetiske data
 bash Infrastructure/scripts/validate.sh                         # bygg, lint og statiske kontroller
 ```
 
 Hvert farlig scenario (manglende setting, fjernet subnett, endret NSG-regel, slettet ressurs, ufullstendig eller feilet what-if,
 manglende rettigheter, gammelt grunnlag, feil abonnement/parameterfil/modus, uvurdert rolletildeling) har en test som må avvise det.
+`gate.test.mjs` tester motoren; `hardening.test.mjs` tester det rundt: godkjente ressurser, antall uanalyserbare oppføringer,
+måling av hemmelige parametere, slot-bager, store/små bokstaver, at skrubberne aldri slipper en hemmelighet gjennom, at
+oppsamleren ikke har noen skriveverb og ikke skriver noe uskrubbet til disk, at bare `deploy.sh` kan deploye, og
+`verify-secure-parameters.sh` mot en stub-`az` (aldri mot Azure).
+
+## De sju stoppkravene
+
+| Skal stoppe ved | Kontroller (ID) | Test |
+|---|---|---|
+| Uventet sletting | `WHATIF-DELETE`, `WHATIF-DELETE-ELEMENT`, `NET-SUBNET-REMOVED`, `NET-RULE-REMOVED`, `BAG-LIVE-ONLY` | `a resource delete…`, `a subnet that would be removed…`, `an NSG rule that would be removed…`, `an array element removed…` |
+| Manglende app settings | `BAG-LIVE-ONLY`, `BAG-REQUIRED-MISSING`, `SLOT-BAG-REQUIRED-MISSING` | `a setting that exists live and is missing…`, `a slot bag that lacks…` |
+| Utilsiktet nettverksendring | `NET-RULE-CHANGE`, `NET-SUBNET-*`, `ACCESS-RULE-*`, `WHATIF-UNEXPECTED-CHANGE` | `an NSG rule that would change…`, `a changed subnet delegation…` |
+| Uventet RBAC-endring | `RBAC-UNREVIEWED`, `RBAC-NAME-COLLISION`, `RBAC-KNOWN-MISSING`, `FIC-UNREVIEWED` | `an unreviewed role assignment…`, `the same principal, role and scope under another name…` |
+| Manglende eller ukjente sensitive parametere | `SECURE-ENV`, `ENV-READ-UNDECLARED`, `SECURE-MISSING`, `BAG-SECURE-FEED-*`, `BAG-SECRET-LITERAL` | `a variable the parameter file reads but preflight did not override…`, `a sensitive parameter missing…` |
+| Ufullstendig what-if | `WHATIF-STATUS`, `WHATIF-ERROR`, `WHATIF-EMPTY`, `WHATIF-COVERAGE`, `WHATIF-UNSUPPORTED*`, `EVIDENCE-*` | `a what-if that did not succeed…`, `an empty what-if result…`, `a declared resource that what-if did not report…` |
+| Endringer i ikke-godkjente ressurser | `WHATIF-RESOURCE-NOT-APPROVED`, `WHATIF-TOUCHES-MISSING`, `WHATIF-CREATE` | `a change to a resource that is not in the deployment's approved list…` |
 
 ## Endringer i `deploy.sh`
 
-* gaten må bestås, og godkjenningen er skrevet og bundet til digesten
+* gaten må bestås, og godkjenningen er skrevet og bundet til digesten; arbeidskopi og grunnlag kontrolleres på nytt etter at
+  godkjenningen er skrevet (treet uendret, grunnlaget yngre enn `maxEvidenceAgeMinutes`)
+* `--dry-run`: hele kontrollkjeden uten terminal og uten deploy, med hver grunn til at en ekte kjøring ville stoppet
+* godkjenningsbildet viser ressursene utrullingen kan endre (`touches`), tillatte endringer og rest-risiko
 * ingen rå what-if på skjermen (den kunne vise hemmeligheter); kun den reduserte rapporten
 * `az bicep build` skriver ikke lenger `main.json` inn i treet; `Infrastructure/main.json` (utdatert siden 2026-09-21) er fjernet
 * abonnementet sendes på hvert kall; `az account set` brukes ikke

@@ -56,6 +56,7 @@ export function baseWorld() {
         allowedNewSettings: {},
         allowedRemovedSettings: {},
         allowedChanges: [],
+        touches: [],
       },
     },
   };
@@ -202,7 +203,7 @@ export function baseWorld() {
     envReads: ["TEST_SECRET"],
     git: { dirty: false, requireClean: true },
     steps: { compile: 0, lint: 0, params: 0, snapshot: 0, whatif: 0, live: 0 },
-    secureEnvironment: { mode: "placeholders" },
+    secureEnvironment: { mode: "placeholders", placeholders: ["TEST_SECRET"], presence: { TEST_SECRET: true } },
     liveCollectedAt: "2026-01-01T11:55:00.000Z",
     liveCalls: [{ name: "resources", rc: 0, required: true }],
   };

@@ -15,7 +15,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Findings, canonical, readJson, sha256, lc } from "./lib/util.mjs";
 import { loadDesired, loadLive } from "./lib/model.mjs";
-import { checkSites, checkAppSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
+import { checkSites, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
 import { checkNetwork, checkDiagnostics, checkDataAndVault, checkRbac, checkIdentities, checkStaticSites } from "./lib/checks-infra.mjs";
 import { evaluateWhatIf } from "./lib/whatif.mjs";
 
@@ -79,6 +79,18 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
     if (!(deployment.secureEnvironment ?? []).includes(name)) findings.fail("ENV-READ-UNDECLARED", name, `the parameter file reads environment variable ${name}, which the manifest does not declare for this deployment`);
   }
   if (context.secureEnvironment?.mode !== "placeholders") findings.fail("SECURE-ENV", "scope", "the gate must evaluate with placeholders for secure parameters, never real secret values");
+  for (const name of context.envReads ?? []) {
+    if (!(context.secureEnvironment?.placeholders ?? []).includes(name)) findings.fail("SECURE-ENV", name, `environment variable ${name} is read by the parameter file but was not overridden with a placeholder: a real value may have reached the evaluation`);
+  }
+  // Sensitive parameters the deployment needs must exist in the deploying shell (presence only; never read here). In a local
+  // review run (--allow-dirty) this is information, because the reviewer is not the one who deploys.
+  const reviewRun = context.git?.requireClean === false;
+  for (const name of deployment.secureEnvironment ?? []) {
+    const present = context.secureEnvironment?.presence?.[name];
+    if (present === true) continue;
+    if (reviewRun) findings.info("SECURE-MISSING", name, `${name} is not set in this shell (review run: a deployment would stop here)`);
+    else findings.fail("SECURE-MISSING", name, `${name} is not set in the deploying shell: the deployment would stop or set an empty value`);
+  }
   if (context.git?.dirty === true && context.git?.requireClean !== false) findings.fail("GIT-DIRTY", "scope", "the working tree has uncommitted changes: the approved digest would not describe a reviewable commit");
   const ageMs = now.getTime() - new Date(context.liveCollectedAt ?? 0).getTime();
   const maxAge = (manifest.maxEvidenceAgeMinutes ?? 30) * 60_000;
@@ -106,6 +118,7 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
   if (desired.ok) {
     checkSites(ctx);
     checkAppSettings(ctx);
+    checkSlotSettings(ctx);
     checkAuthSettings(ctx);
     checkHostBindings(ctx);
     checkPublishingPolicies(ctx);

@@ -6,21 +6,23 @@
 //   - per changed property: path, operation, and before/after ONLY for scalar values at non-sensitive paths;
 //     objects and arrays are reduced to {kind, name?} so an added/removed array element (subnet, rule, binding)
 //     is identified by name without its body
-//   - for app settings bags: the setting NAMES present before/after, never a value
+//   - for config resources that carry secrets (app settings, connection strings, auth settings, storage mounts ...): the
+//     property NAMES only, never a value, whatever the value looks like
 // Exit codes: 0 = parsed; 2 = not JSON / not a what-if result.
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { looksSecret } from "./lib/secrets.mjs";
 
-const SENSITIVE_PATH = /(password|secret|connectionstring|apikey|api_key|token|authorization|signingkey|privatekey|credential|primarykey|secondarykey|pfx|certificateblob|sas|administratorloginpassword)/i;
-const SENSITIVE_VALUE = /(password=|pwd=|accountkey=|sharedaccesssignature|[?&]sig=|bearer\s|-----BEGIN|:\/\/[^\/\s:@]+:[^\/\s@]+@|InstrumentationKey=)/i;
-const OPAQUE = /^[A-Za-z0-9+\/=_-]{32,}$/;
 const MAX_STRING = 160;
+
+/** Site and slot configuration resources that can hold secrets: always opaque (names only). */
+const OPAQUE_CONFIG = /\/config\/(appsettings|connectionstrings|authsettings|authsettingsv2|azurestorageaccounts|metadata|pushsettings|backup|publishingcredentials)$/i;
 
 function scalar(path, value) {
   if (value === null || typeof value === "boolean" || typeof value === "number") return { v: value };
   if (typeof value !== "string") return undefined;
-  if (SENSITIVE_PATH.test(path) || SENSITIVE_VALUE.test(value) || OPAQUE.test(value)) return { withheld: true };
+  if (looksSecret(path, value)) return { withheld: true };
   return { v: value.length > MAX_STRING ? `${value.slice(0, MAX_STRING)}…` : value };
 }
 
@@ -71,7 +73,7 @@ export function summarize(parsed) {
       changes.push(entry);
       continue;
     }
-    if (/\/config\/appsettings$/i.test(id)) {
+    if (OPAQUE_CONFIG.test(id)) {
       entry.bag = { before: bagNames(c.before), after: bagNames(c.after) };
     }
     entry.unsupportedReason = c.unsupportedReason ?? undefined;

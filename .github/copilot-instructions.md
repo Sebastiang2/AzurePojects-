@@ -40,15 +40,18 @@ param privateEndpointSubnetPrefix = '10.20.3.0/24'
 Follow this naming and parameter structure when adding or modifying environment files.
 
 ## Deployment workflow
-- Validate Bicep syntax before deployment with the Azure CLI or `az bicep build`.
-- Deploy with a parameter file, for example:
+- Validate Bicep syntax before deployment with `bash Infrastructure/scripts/validate.sh` (build, lint, static checks).
+- Production is never deployed with a bare `az deployment group create`. Every deployment goes through the safety gate:
 
 ```bash
-az deployment group create \
-  --resource-group <rg-name> \
-  --template-file main.bicep \
-  --parameters @environmnets/Prod.Bicepparam
+bash Infrastructure/scripts/deploy.sh --deployment <key> --dry-run   # keys: Infrastructure/safety/manifest.json
+bash Infrastructure/scripts/deploy.sh --deployment <key>
 ```
+
+- The gate (`Infrastructure/scripts/preflight.sh`) compares the template with production and stops on deletions, missing app
+  settings, network changes, unreviewed RBAC and incomplete what-if. A change that is meant to alter production goes in the
+  same PR as its entry in `Infrastructure/safety/manifest.json`. See `docs/deploy-safety-gate.md` and `docs/deploy-runbook.md`.
+- Never read, print or commit secret values; secure parameters come from environment variables.
 
 ## Important repo-specific notes
 - The repo appears to be organized around a single production environment config plus modular Azure services, rather than a multi-environment abstraction layer.

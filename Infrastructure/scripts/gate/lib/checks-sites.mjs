@@ -2,11 +2,28 @@
 // Each check compares what the Bicep declares (desired) with what production has (live) and records a finding for every
 // difference. A difference is only "allowed" when the manifest names it, with its exact before and after value.
 import { lc, tail, isExpression, PLACEHOLDER } from "./util.mjs";
+import { NAME_SECRET, looksSecret } from "./secrets.mjs";
 
-const SECRET_NAME = /(secret|password|passwd|pwd|apikey|api_key|key$|token|authorization|connectionstring|salt|signing|private_key|credential)/i;
-const OPAQUE_VALUE = /^[A-Za-z0-9+/=_-]{24,}$/;
 /** Values are shown in reports only when they are plainly not secrets. */
-const shown = (name, value) => (SECRET_NAME.test(name) || OPAQUE_VALUE.test(String(value ?? "")) ? "<hidden>" : JSON.stringify(value));
+const shown = (name, value) => (looksSecret(name, value) ? "<hidden>" : JSON.stringify(value));
+
+/** Site properties whose value is case-sensitive on Linux (a command line, a runtime stack, a path). Everything else about a
+ *  property is compared case-insensitively because the platform reports enums with varying case. */
+const CASE_SENSITIVE = new Set(["siteConfig.appCommandLine", "siteConfig.linuxFxVersion", "siteConfig.healthCheckPath", "siteConfig.windowsFxVersion"]);
+
+/** App setting values are compared exactly; only booleans ("True"/"true") are compared without case. */
+const sameSettingValue = (a, b) => {
+  const x = String(a ?? "");
+  const y = String(b ?? "");
+  return x === y || (/^(true|false)$/i.test(x) && /^(true|false)$/i.test(y) && lc(x) === lc(y));
+};
+
+// Shapes of an entry in a deployment's `allowedChanges` (manifest). The `property` field selects the check that reads it:
+//   siteConfig.<name> | httpsOnly | ...        a site property, with exact before/after          (compareValue)
+//   setting:<NAME>                             an app setting value, or literal -> keyvault-reference (checkAppSettings)
+//   ipSecurityRestrictions:<rule name>         an access rule that is added                       (checkAccessRules)
+//   whatif: true                               a what-if path (glob) of a resource type          (whatif.mjs)
+// Each entry carries a `why`; the approver reads it in the report.
 
 /** An allowed-change entry matches on resource, property and (when given) the exact before/after values. */
 function allowedChange(deployment, resource, property, before, after) {
@@ -28,7 +45,12 @@ function compareValue(ctx, resource, property, desiredValue, rawLiveValue, id = 
     ctx.findings.info("SITE-PROP-UNEVALUATED", resource, `${property} is an expression the gate cannot evaluate offline`, { property });
     return;
   }
-  const same = typeof desiredValue === "string" || typeof liveValue === "string" ? lc(desiredValue) === lc(liveValue) : desiredValue === liveValue;
+  const exact = CASE_SENSITIVE.has(String(property));
+  const same = exact
+    ? String(desiredValue) === String(liveValue)
+    : typeof desiredValue === "string" || typeof liveValue === "string"
+      ? lc(desiredValue) === lc(liveValue)
+      : desiredValue === liveValue;
   if (same) {
     ctx.findings.count("siteProperties");
     return;
@@ -175,7 +197,7 @@ export function checkAppSettings(ctx) {
       if (!l) {
         if (addable.has(lc(setting))) findings.allowed("BAG-NEW", name, `${setting} is added (listed in manifest)`);
         else findings.fail("BAG-NEW", name, `${setting} would be created and is not listed in the manifest`, { setting });
-        if (typeof value === "string" && !feed && !isExpression(value) && !/^@Microsoft\.KeyVault\(/.test(value) && SECRET_NAME.test(setting)) {
+        if (typeof value === "string" && !feed && !isExpression(value) && !/^@Microsoft\.KeyVault\(/.test(value) && NAME_SECRET.test(setting)) {
           findings.fail("BAG-SECRET-LITERAL", name, `${setting} looks like a secret and is declared as a literal`);
         }
         continue;
@@ -195,8 +217,8 @@ export function checkAppSettings(ctx) {
         continue;
       }
       if (l.kind === "keyvault-reference" || l.kind === "plain" || l.kind === "empty") {
-        if (lc(String(l.value ?? "")) === lc(String(value))) findings.count("appSettingValuesIdentical");
-        if (lc(String(l.value ?? "")) !== lc(String(value))) {
+        if (sameSettingValue(l.value, value)) findings.count("appSettingValuesIdentical");
+        if (!sameSettingValue(l.value, value)) {
           const allowance = allowedChange(deployment, name, `setting:${setting}`, l.value, value);
           if (allowance) findings.allowed("BAG-VALUE-CHANGE", name, `${setting}: ${shown(setting, l.value)} -> ${shown(setting, value)} (${allowance.why ?? "listed in manifest"})`);
           else findings.fail("BAG-VALUE-CHANGE", name, `${setting} would change from ${shown(setting, l.value)} to ${shown(setting, value)}`, { setting });
@@ -213,6 +235,43 @@ export function checkAppSettings(ctx) {
       if (value === undefined) continue; // reported by the required list when it matters
       if (isExpression(value) || lc(String(value)) !== lc(String(mustBe))) {
         findings.fail("BAG-INVARIANT", name, `${setting} must be ${JSON.stringify(mustBe)} and is ${JSON.stringify(value)}`, { setting });
+      }
+    }
+  }
+}
+
+/**
+ * App settings of a deployment slot. A slot has its own bag and, after a swap, its settings can end up in production, so the
+ * same required names, invariants and secure-parameter wiring that hold for the site apply to every slot bag. (The slot
+ * itself is judged by SLOT-NEW and the manifest's allowedCreates.)
+ */
+export function checkSlotSettings(ctx) {
+  const { desired, manifest, findings } = ctx;
+  for (const bagResource of desired.ofType("Microsoft.Web/sites/slots/config").filter((r) => /\/appsettings$/i.test(r.name))) {
+    const [site, slot] = String(bagResource.name).split("/");
+    const subject = `${site}/${slot}`;
+    const appManifest = manifest.apps?.[site] ?? {};
+    const want = bagResource.properties;
+    if (!want || typeof want !== "object" || Array.isArray(want)) {
+      findings.fail("SLOT-BAG-UNEVALUATED", subject, "the slot's app settings could not be evaluated offline, so their names cannot be checked");
+      continue;
+    }
+    findings.count("slotBagSettings", Object.keys(want).length);
+    for (const required of appManifest.required ?? []) {
+      if (!Object.prototype.hasOwnProperty.call(want, required)) findings.fail("SLOT-BAG-REQUIRED-MISSING", subject, `required setting ${required} is not in the slot's configuration`, { setting: required });
+    }
+    for (const [setting, mustBe] of Object.entries(appManifest.mustEqual ?? {})) {
+      const value = want[setting];
+      if (value === undefined) continue;
+      if (isExpression(value) || lc(String(value)) !== lc(String(mustBe))) findings.fail("SLOT-BAG-INVARIANT", subject, `${setting} must be ${JSON.stringify(mustBe)} and is ${JSON.stringify(value)} in the slot`, { setting });
+    }
+    for (const [setting, value] of Object.entries(want)) {
+      const feed = PLACEHOLDER.exec(typeof value === "string" ? value : "");
+      const expected = appManifest.secureFeeds?.[setting];
+      if (feed && expected !== feed[1]) findings.fail("SLOT-BAG-SECURE-FEED", subject, `${setting} is fed from ${feed[1]}; the manifest expects ${expected ?? "no secure parameter"}`);
+      if (!feed && expected) findings.fail("SLOT-BAG-SECURE-FEED", subject, `${setting} must be fed from ${expected} and is not`);
+      if (typeof value === "string" && !feed && !isExpression(value) && !/^@Microsoft\.KeyVault\(/.test(value) && NAME_SECRET.test(setting)) {
+        findings.fail("SLOT-BAG-SECRET-LITERAL", subject, `${setting} looks like a secret and is declared as a literal in the slot`);
       }
     }
   }
