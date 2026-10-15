@@ -37,7 +37,25 @@ param mysqlNsgId string
 @description('NSG resource ID for Private Endpoint subnet')
 param privateEndpointNsgId string
 
+@description('Address prefix of the temporary DB-migration subnet that exists in production (snet-migration-temp). Empty = not declared. It is declared only so that a deployment of this template does not try to delete a subnet that still holds the migration VM NIC; clear it when the migration leftovers have been decommissioned.')
+param migrationSubnetPrefix string = ''
+
+@description('Resource ID of the existing NSG on the migration subnet (nsg-migration-temp, created by hand). Used only together with migrationSubnetPrefix.')
+param migrationNsgId string = ''
+
 var vnetName = 'vnet-${workloadName}-${environment}-${instance}'
+
+var migrationSubnets = empty(migrationSubnetPrefix) ? [] : [
+  {
+    name: 'snet-migration-temp'
+    properties: {
+      addressPrefix: migrationSubnetPrefix
+      networkSecurityGroup: empty(migrationNsgId) ? null : {
+        id: migrationNsgId
+      }
+    }
+  }
+]
 
 resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
   name: vnetName
@@ -51,7 +69,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
       ]
     }
 
-    subnets: [
+    subnets: concat([
       {
         name: 'snet-appservice-integration'
         properties: {
@@ -101,7 +119,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
           privateEndpointNetworkPolicies: 'Enabled'
         }
       }
-    ]
+    ], migrationSubnets)
   }
 }
 
