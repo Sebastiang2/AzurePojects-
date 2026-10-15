@@ -1,0 +1,751 @@
+{
+  "schemaVersion": 1,
+  "description": "Approval record for the deployment safety gate (Infrastructure/scripts/preflight.sh). Everything the gate may accept as expected is listed here and reviewed like code. Anything not listed fails the gate. Edit it in the same PR as the change that needs it, with a reason.",
+  "scope": {
+    "subscriptionId": "563af248-8461-42a9-8121-e350e48ca7b6",
+    "tenantId": "b914fd45-5574-470d-bb21-730850389005",
+    "resourceGroup": "rg-invi-prod-swc-001",
+    "location": "swedencentral"
+  },
+  "maxEvidenceAgeMinutes": 30,
+  "defaults": {
+    "subnet": {
+      "privateEndpointNetworkPolicies": "Disabled",
+      "privateLinkServiceNetworkPolicies": "Enabled"
+    },
+    "siteConfig": {
+      "ipSecurityRestrictionsDefaultAction": "Allow",
+      "scmIpSecurityRestrictionsDefaultAction": "Allow"
+    },
+    "authSettingsV2": {
+      "app-invi-admin-prod-001": {
+        "clearInboundClaimsMapping": "false",
+        "httpSettings.forwardProxy.convention": "NoProxy",
+        "identityProviders.apple.enabled": true,
+        "identityProviders.azureActiveDirectory.login.disableWWWAuthenticate": false,
+        "identityProviders.facebook.enabled": true,
+        "identityProviders.gitHub.enabled": true,
+        "identityProviders.google.enabled": true,
+        "identityProviders.legacyMicrosoftAccount.enabled": true,
+        "identityProviders.twitter.enabled": true,
+        "login.cookieExpiration.convention": "FixedTime",
+        "login.cookieExpiration.timeToExpiration": "08:00:00",
+        "login.nonce.nonceExpirationInterval": "00:05:00",
+        "login.nonce.validateNonce": true,
+        "login.preserveUrlFragmentsForLogins": false,
+        "login.tokenStore.tokenRefreshExtensionHours": 72,
+        "prmConfig.disableMetadata": false,
+        "prmConfig.hideAuthorizationServers": false
+      }
+    }
+  },
+  "apps": {
+    "app-invi-data-api-prod-001": {
+      "required": [
+        "KeyVault__Uri",
+        "Jwt__SigningKey",
+        "Jwt__Issuer",
+        "Jwt__Audience",
+        "Database__Host",
+        "Database__Name",
+        "Database__User",
+        "Database__Password",
+        "AuthApiUrl",
+        "FrontendBaseUrl",
+        "InviteBaseUrl",
+        "WebDrafts__Enabled",
+        "WebDrafts__RequireCaptcha",
+        "WebDrafts__TrustCloudflareConnectingIp",
+        "PlaceSuggestions__Enabled"
+      ],
+      "mustEqual": {
+        "WebDrafts__Enabled": "false",
+        "WebDrafts__RequireCaptcha": "true",
+        "WebDrafts__TrustCloudflareConnectingIp": "false",
+        "PlaceSuggestions__Enabled": "false"
+      },
+      "secureFeeds": {
+        "RevenueCat__SecretApiKey": "REVENUECAT_SECRET_API_KEY",
+        "RevenueCat__WebhookAuthorization": "REVENUECAT_WEBHOOK_AUTHORIZATION"
+      }
+    },
+    "app-invi-auth-api-prod-001": {
+      "required": [
+        "KeyVault__Uri",
+        "Jwt__SigningKey",
+        "Jwt__Issuer",
+        "Jwt__Audience",
+        "Database__Host",
+        "Database__Name",
+        "Database__User",
+        "Database__Password"
+      ]
+    },
+    "app-invi-admin-prod-001": {
+      "required": [
+        "KEY_VAULT_URI",
+        "DATA_API_BASE_URL_PROD",
+        "NEXT_PUBLIC_APP_URL",
+        "APP_ENV",
+        "DATA_API_BASE_URL_TEST",
+        "DATA_API_ADMIN_KEY_TEST",
+        "SCM_DO_BUILD_DURING_DEPLOYMENT",
+        "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
+        "WEBSITE_AUTH_AAD_ALLOWED_TENANTS"
+      ],
+      "mustEqual": {
+        "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
+        "APP_ENV": "production"
+      },
+      "secureFeeds": {
+        "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET": "ADMIN_ENTRA_CLIENT_SECRET"
+      }
+    }
+  },
+  "noise": [
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties.backup.backupIntervalHours",
+        "properties.fullVersion",
+        "properties.maintenancePolicy",
+        "properties.maintenanceWindow",
+        "properties.replicationRole",
+        "properties.storage.iops"
+      ],
+      "why": "Read-only values the platform fills in. The template cannot carry them and a PUT leaves them as they are."
+    },
+    {
+      "type": "Microsoft.Insights/components",
+      "ops": [
+        "Create"
+      ],
+      "paths": [
+        "properties.Flow_Type",
+        "properties.Request_Source"
+      ],
+      "why": "Values the portal sets on creation; Azure keeps them."
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties.isIPv6EnabledPrivateEndpoint"
+      ],
+      "why": "Platform-filled flag."
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "ops": [
+        "Modify",
+        "Delete"
+      ],
+      "paths": [
+        "properties.privateDnsZoneConfigs[*]",
+        "properties.privateDnsZoneConfigs[*].etag",
+        "properties.privateDnsZoneConfigs[*].id",
+        "properties.privateDnsZoneConfigs[*].type",
+        "properties.privateDnsZoneConfigs[*].properties.provisioningState"
+      ],
+      "why": "Platform-filled identifiers on the zone config; the zone id itself is unchanged."
+    },
+    {
+      "type": "Microsoft.Web/sites/networkConfig",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties.resourceAllocation",
+        "properties.subnetIpAllocation",
+        "properties.vnetConnectionAllocation"
+      ],
+      "why": "Platform-computed allocation details of the VNet integration."
+    },
+    {
+      "type": "Microsoft.Web/staticSites",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties.deploymentAuthPolicy",
+        "properties.stableInboundIP",
+        "properties.trafficSplitting"
+      ],
+      "why": "Platform-filled read-only values."
+    },
+    {
+      "type": "Microsoft.Web/staticSites",
+      "ops": [
+        "Create"
+      ],
+      "paths": [
+        "properties.buildProperties"
+      ],
+      "why": "buildProperties is write-only: GET does not return it, so what-if always shows it as created. It only controls workflow generation when the app is created."
+    },
+    {
+      "type": "Microsoft.Web/staticSites/customDomains",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties.expiresOn",
+        "properties.isDefault"
+      ],
+      "why": "Platform-filled read-only values."
+    },
+    {
+      "type": "Microsoft.Web/staticSites/customDomains",
+      "ops": [
+        "Create"
+      ],
+      "paths": [
+        "properties.validationMethod"
+      ],
+      "why": "Write-only: GET does not return it, so what-if always shows it as created."
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "ops": [
+        "Create"
+      ],
+      "paths": [
+        "properties.siteConfig.netFrameworkVersion",
+        "properties.siteConfig.localMySqlEnabled"
+      ],
+      "why": "Schema defaults that what-if adds to its after-model for siteConfig, which it cannot read. They are not written: live netFrameworkVersion is v4.0 although this template has been deployed repeatedly. Irrelevant on Linux. Re-checked by the post-deploy verification."
+    }
+  ],
+  "immutable": [
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "path": "properties.version",
+      "why": "a major version change is not a template change"
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "path": "properties.network.delegatedSubnetResourceId",
+      "why": "cannot be changed on an existing server"
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "path": "properties.network.privateDnsZoneResourceId",
+      "why": "cannot be changed on an existing server"
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "path": "properties.administratorLogin",
+      "why": "cannot be changed"
+    },
+    {
+      "type": "Microsoft.DBforMySQL/flexibleServers",
+      "path": "location",
+      "why": "forces a new server"
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "path": "kind",
+      "why": "cannot be changed"
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "path": "properties.serverFarmId",
+      "why": "moves the app to another plan"
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "path": "properties.reserved",
+      "why": "Linux or Windows cannot be changed"
+    },
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "path": "kind",
+      "why": "cannot be changed"
+    },
+    {
+      "type": "Microsoft.KeyVault/vaults",
+      "path": "properties.tenantId",
+      "why": "cannot be changed"
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "path": "properties.subnet.id",
+      "why": "moves the endpoint (new NIC and address)"
+    }
+  ],
+  "rbac": {
+    "watchedRoles": [
+      "*"
+    ],
+    "knownAssignments": [
+      {
+        "name": "59954099-485f-48fd-99bd-dd5a87928afd",
+        "role": "Owner",
+        "principalType": "User",
+        "scope": "(subscription)",
+        "description": "subscription owner (user)",
+        "status": "accepted"
+      },
+      {
+        "name": "f963a74e-72c3-53e5-8bf5-1b2e422608ec",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourcegroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "Data API system identity: vault-wide Secrets User (modules/rbac.bicep)",
+        "status": "declared"
+      },
+      {
+        "name": "d34a5c22-dec2-5b32-a2e5-d532260262c0",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourcegroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "Auth API system identity: vault-wide Secrets User (modules/rbac.bicep)",
+        "status": "declared"
+      },
+      {
+        "name": "28868b62-4ae3-47f1-8e2e-cb21422e581b",
+        "role": "Website Contributor",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-auth-api-prod-001",
+        "description": "id-gha-invi-auth-api-prod-001: Website Contributor on the Auth API (hand-made deploy identity; to be adopted in IaC-5)",
+        "status": "hand-made"
+      },
+      {
+        "name": "55fe023a-de8c-4ddf-91a9-087a87c2dd00",
+        "role": "Website Contributor",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-data-api-prod-001",
+        "description": "id-gha-invi-data-api-prod-001: Website Contributor on the Data API (hand-made deploy identity; to be adopted in IaC-5)",
+        "status": "hand-made"
+      },
+      {
+        "name": "d4d60426-59b2-475c-bf33-f6e7dc4b1c27",
+        "role": "Virtual Machine Administrator Login",
+        "principalType": "User",
+        "scope": "/resourcegroups/rg-invi-prod-swc-001/providers/Microsoft.Compute/virtualMachines/vm-db-migration-temp",
+        "description": "owner user: VM Administrator Login on vm-db-migration-temp (migration leftover)",
+        "status": "cleanup"
+      },
+      {
+        "name": "0a7e49ec-21e3-490e-8893-25bd8541b14a",
+        "role": "Key Vault Secrets Officer",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "vm-db-migration-temp system identity: Key Vault Secrets Officer on the WHOLE vault (finding F3; remove with the migration cleanup)",
+        "status": "risk"
+      },
+      {
+        "name": "71cd568c-58ac-4cef-baae-67868d671934",
+        "role": "Key Vault Secrets User",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "owner user: Key Vault Secrets User",
+        "status": "accepted"
+      },
+      {
+        "name": "85a8044c-c4c5-4978-a574-d5558c000b6e",
+        "role": "Key Vault Administrator",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "owner user: Key Vault Administrator",
+        "status": "accepted"
+      },
+      {
+        "name": "68ffa581-e7ea-44e1-ae4c-0ea94fbc8cd7",
+        "role": "Key Vault Administrator",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001",
+        "description": "orphaned principal (no longer in Entra): Key Vault Administrator (finding F13; remove)",
+        "status": "cleanup"
+      },
+      {
+        "name": "86362332-2299-420a-8205-1034864be18d",
+        "role": "Foundry User",
+        "principalType": "User",
+        "scope": "(subscription)",
+        "description": "owner user: Foundry User at subscription scope",
+        "status": "accepted"
+      },
+      {
+        "name": "e6c9f6f1-8074-4acf-970e-b8c7e26f3963",
+        "role": "Foundry User",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001",
+        "description": "owner user: Foundry User on the resource group",
+        "status": "accepted"
+      },
+      {
+        "name": "5981f195-200b-4e03-a317-caf1b93deac4",
+        "role": "Contributor",
+        "principalType": "Group",
+        "scope": "(subscription)",
+        "description": "group Invi Azure Contributors: Contributor on the subscription (finding F10)",
+        "status": "accepted"
+      },
+      {
+        "name": "71d54deb-6cc0-488b-84a3-3c04c67cf8f9",
+        "role": "Reader",
+        "principalType": "Group",
+        "scope": "(subscription)",
+        "description": "group Invi Azure Readers: Reader on the subscription",
+        "status": "accepted"
+      },
+      {
+        "name": "ec81a981-4aeb-4664-8348-5ca25d4737c9",
+        "role": "App Service Environment Contributor",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-admin-prod-001",
+        "description": "admin user: App Service Environment Contributor on the admin app (no effect; finding F13)",
+        "status": "cleanup"
+      },
+      {
+        "name": "f1e36a82-f909-4572-94ef-d3cf4336bce8",
+        "role": "Role Based Access Control Administrator",
+        "principalType": "User",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001",
+        "description": "admin user: Role Based Access Control Administrator on the resource group",
+        "status": "accepted"
+      },
+      {
+        "name": "deb4a249-218f-5848-9abf-74f55dd3df15",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourcegroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/admin-publishing-api-key",
+        "description": "admin app system identity: Secrets User on secret admin-publishing-api-key (modules/adminapp-rbac.bicep)",
+        "status": "declared"
+      },
+      {
+        "name": "03e6c59f-9327-4311-9f66-e6045e5f7abb",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/admin-publishing-api-key-test",
+        "description": "admin app system identity: Secrets User on secret admin-publishing-api-key-test (hand-made, adopted by name in IaC-2)",
+        "status": "declared"
+      },
+      {
+        "name": "8b28a483-f9ea-41d4-949c-142596e444ca",
+        "role": "Website Contributor",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-admin-prod-001",
+        "description": "id-gha-invi-admin-prod-001: Website Contributor on the admin app (hand-made deploy identity; to be adopted in IaC-5)",
+        "status": "hand-made"
+      }
+    ]
+  },
+  "identities": {
+    "description": "User-assigned identities and their federated credentials that were reviewed. A new identity or credential, or a changed subject, fails the gate until it is listed here.",
+    "known": {
+      "id-gha-invi-auth-api-prod-001": {
+        "fic-gha-invi-auth-api-prod-migration": {
+          "subject": "repo:CetchApp@262199775/cetchapp-auth-api@1171937595:environment:prod-migration",
+          "status": "stale: names a renamed repository and an unprotected environment (finding F11); remove in IaC-5"
+        },
+        "oidc-credential-a772": {
+          "subject": "repo:CetchApp@262199775/invi-auth-api@1171937595:ref:refs/heads/main",
+          "status": "active"
+        }
+      },
+      "id-gha-invi-data-api-prod-001": {
+        "fic-gha-invi-data-api-prod-migration": {
+          "subject": "repo:CetchApp@262199775/cetchapp-data-api@1222823213:environment:prod-migration",
+          "status": "stale: names a renamed repository and an unprotected environment (finding F11); remove in IaC-5"
+        },
+        "oidc-credential-9086": {
+          "subject": "repo:CetchApp@262199775/invi-data-api@1222823213:ref:refs/heads/main",
+          "status": "active"
+        }
+      },
+      "id-gha-invi-admin-prod-001": {
+        "github-production": {
+          "subject": "repo:CetchApp/cetchapp-onboarding-admin:environment:production",
+          "status": "active"
+        }
+      }
+    }
+  },
+  "residualRisks": [
+    {
+      "id": "R-SECURE-PARAMETERS",
+      "text": "Secure parameter values (RevenueCat key and webhook authorization, Entra client secret) are never read by the gate and what-if cannot compare them. The deploying shell must export the SAME values production has: a wrong RevenueCat value breaks purchases. Check them with verify-secure-parameters.sh before you approve."
+    },
+    {
+      "id": "R-MYSQL-ADMIN-PASSWORD",
+      "text": "The MySQL administrator password is not part of any deployment (the server is left alone). Azure never returns it and the gate cannot verify it. It is changed only out of band, and both APIs read it from Key Vault: a change has to update the secret and restart the apps in the same step, neither of which the gate checks. A server that is created (mode create) gets its password from a secure parameter that cannot be compared."
+    },
+    {
+      "id": "R-RESTART",
+      "text": "Writing app settings restarts the affected apps. Expect a short interruption (cold start) on every deployment that touches a settings bag."
+    },
+    {
+      "id": "R-KV-SECRETS",
+      "text": "Key Vault secret names and values are not verified: the vault is private and the gate never reads secrets. A reference to a missing secret only shows up when the app starts."
+    },
+    {
+      "id": "R-WHATIF-LIMITS",
+      "text": "what-if cannot read app settings, siteConfig details or guid()-named role assignments. The gate covers names and structure from live read-only listings; it does not prove that secret values are right."
+    },
+    {
+      "id": "R-OUTSIDE-ARM",
+      "text": "Cloudflare, GitHub, Entra app registrations and MySQL users are outside Azure Resource Manager and are not checked."
+    },
+    {
+      "id": "R-DRIFT-WINDOW",
+      "text": "Production can change between the gate run and the deployment. The evidence expires after 30 minutes; run the gate again if you wait longer."
+    }
+  ],
+  "deployments": {
+    "main": {
+      "description": "Network, MySQL, Key Vault, monitoring, the App Service plan, Data API, Auth API and the API identities' vault access",
+      "template": "Infrastructure/main.bicep",
+      "parameters": "Infrastructure/environments/prod.bicepparam",
+      "deploymentName": "invi-prod-infrastructure-001",
+      "mysqlServer": {
+        "name": "mysql-invi-prod-001",
+        "mode": "existing",
+        "why": "The production server exists and both APIs connect to it as the administrator. The deployment must not write it: API 2024-12-30 documents administratorLogin and administratorLoginPassword as creation-only and does not say what a PUT without them does to an existing server."
+      },
+      "secureEnvironment": [
+        "REVENUECAT_SECRET_API_KEY",
+        "REVENUECAT_WEBHOOK_AUTHORIZATION"
+      ],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "inviMetrics",
+          "why": "diagnostic setting that exists live (hand-made) and is adopted into code: same name and categories, verified by the DIAG checks"
+        }
+      ],
+      "allowedUnsupported": [
+        {
+          "module": "rbac",
+          "why": "role assignments named with guid() on a runtime principal; verified by the RBAC checks against live",
+          "count": 2
+        }
+      ],
+      "allowedNewSettings": {
+        "app-invi-data-api-prod-001": [
+          "PlaceSuggestions__Enabled"
+        ]
+      },
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-data-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-auth-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Network/privateEndpoints",
+          "name": "pe-invi-prod-001-kv"
+        },
+        {
+          "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+          "name": "pe-invi-prod-001-kv/default"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-data-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-auth-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-data-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-auth-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/networkConfig",
+          "name": "app-invi-data-api-prod-001/virtualNetwork"
+        },
+        {
+          "type": "Microsoft.Web/sites/networkConfig",
+          "name": "app-invi-auth-api-prod-001/virtualNetwork"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "inviMetrics"
+        }
+      ]
+    },
+    "adminapp-a": {
+      "description": "Admin app (Next.js) with its Application Insights, settings, Easy Auth and diagnostics. Contributor is enough",
+      "template": "Infrastructure/modules/adminapp.bicep",
+      "parameters": "Infrastructure/environments/prod.adminapp.bicepparam",
+      "deploymentName": "invi-prod-adminapp-001",
+      "secureEnvironment": [
+        "ADMIN_ENTRA_CLIENT_SECRET"
+      ],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [
+        {
+          "id": "R-ADMIN-EASYAUTH",
+          "text": "An empty ADMIN_ENTRA_CLIENT_SECRET turns Easy Auth off and closes the site (inbound Deny). The deploy script refuses an empty value; the gate only ever sees a placeholder."
+        }
+      ],
+      "whatifBlind": [
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-admin-prod-001/authsettingsV2",
+          "why": "the resource is conditional on a secure parameter, which what-if cannot evaluate",
+          "verifiedBy": "AUTH-CHANGE (declared Easy Auth values against live)"
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-admin-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-admin-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-admin-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-admin-prod-001/authsettingsV2"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-admin-prod-001"
+        }
+      ]
+    },
+    "adminapp-b-rbac": {
+      "description": "Key Vault Secrets User for the admin app, per secret. Needs Owner or RBAC Administrator",
+      "template": "Infrastructure/modules/adminapp-rbac.bicep",
+      "parameters": "Infrastructure/environments/prod.adminapp.rbac-owner.bicepparam",
+      "deploymentName": "invi-prod-adminapp-rbac-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [
+        {
+          "module": "secretAccess",
+          "why": "role assignment named with guid() on the admin app's principal; verified by the RBAC checks against live",
+          "count": 1
+        }
+      ],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "03e6c59f-9327-4311-9f66-e6045e5f7abb"
+        }
+      ]
+    },
+    "adminapp-c-domain": {
+      "description": "admin.cetchapp.com host name binding and managed certificate",
+      "template": "Infrastructure/modules/adminapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.adminapp.domain-admin-cetchapp-com.bicepparam",
+      "deploymentName": "invi-prod-adminapp-domain-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": []
+    },
+    "swa-web": {
+      "description": "Static Web App swa-invi-web-prod-001 (no custom domains)",
+      "template": "Infrastructure/modules/staticwebapp.bicep",
+      "parameters": "Infrastructure/environments/prod.staticwebapp-web.bicepparam",
+      "deploymentName": "invi-prod-swa-web-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites",
+          "name": "swa-invi-web-prod-001"
+        }
+      ]
+    },
+    "swa-domain-app-cetchapp-com": {
+      "description": "app.cetchapp.com on swa-invi-web-prod-001",
+      "template": "Infrastructure/modules/staticwebapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.staticwebapp-web.domain-app-cetchapp-com.bicepparam",
+      "deploymentName": "invi-prod-swa-domain-app-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/app.cetchapp.com"
+        }
+      ]
+    },
+    "swa-domain-invi-lol": {
+      "description": "invi.lol on swa-invi-web-prod-001",
+      "template": "Infrastructure/modules/staticwebapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.staticwebapp-web.domain-invi-lol.bicepparam",
+      "deploymentName": "invi-prod-swa-domain-invilol-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/invi.lol"
+        }
+      ]
+    },
+    "swa-domain-www-invi-lol": {
+      "description": "www.invi.lol on swa-invi-web-prod-001",
+      "template": "Infrastructure/modules/staticwebapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.staticwebapp-web.domain-www-invi-lol.bicepparam",
+      "deploymentName": "invi-prod-swa-domain-wwwinvilol-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/staticSites/customDomains",
+          "name": "swa-invi-web-prod-001/www.invi.lol"
+        }
+      ]
+    }
+  }
+}

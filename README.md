@@ -69,7 +69,7 @@ Produksjonsmiljøet består av følgende komponenter:
   - `www.invi.lol`
   - `app.cetchapp.com` (deep links, invites, verify/reset, app fallback)
 - **Repo**: `https://github.com/CetchApp/Cetchapp-web` (branch: `main`)
-- **Deployment**: kun via parameterfilene `prod.staticwebapp-web*.bicepparam` (se «Separate deployments»). `main.bicep` og `deploy.sh` deklarerer ingen Static Web App.
+- **Deployment**: kun via parameterfilene `prod.staticwebapp-web*.bicepparam` og `deploy.sh --deployment swa-web` (se «Separate deployments»). `main.bicep` deklarerer ingen Static Web App.
 - **Merk**: `swa-invi-app-web-prod-001` er en annen ressurs og ikke et tidligere navn på denne. Den ble aldri tatt i bruk (Free, uten innhold og uten domener), er fjernet fra IaC og er ikke lenger en del av ønsket tilstand. Azure-ressursen kan finnes til den slettes separat; en Incremental deployment sletter den ikke.
 
 ### Overvåking / Monitoring
@@ -91,7 +91,9 @@ Produksjonsmiljøet består av følgende komponenter:
 ```
 Infrastructure/
 ├── main.bicep                  # Hoved-template for full infrastruktur
-├── main.json                   # Kompilert ARM template
+├── bicepconfig.json            # Lint-regler (secure-feil er feil)
+├── safety/
+│   └── manifest.json           # Godkjenningsregister for sikkerhetsgaten (hva en utrulling får endre)
 ├── modules/                    # Gjenbrukbare Bicep-moduler
 │   ├── network.bicep           # VNet og subnets
 │   ├── nsg.bicep               # Network Security Groups
@@ -117,7 +119,15 @@ Infrastructure/
 │   ├── prod.staticwebapp-web.domain-www-invi-lol.bicepparam
 │   └── prod.staticwebapp-web.domain-app-cetchapp-com.bicepparam
 └── scripts/
-    └── deploy.sh               # Deployment script med validering
+    ├── deploy.sh               # Utrulling bak sikkerhetsgaten (--deployment <nøkkel>, --dry-run)
+    ├── preflight.sh            # Sikkerhetsgaten alene (read-only, fail-closed)
+    ├── verify-secure-parameters.sh  # Operatørkontroll: stemmer hemmelige parametere med produksjon? (MATCH/MISMATCH)
+    ├── validate.sh             # Bygg, lint og statiske kontroller (offline)
+    └── gate/                   # Analysemotor, oppsamler, skrubbere og tester for gaten
+docs/
+├── deploy-safety-gate.md       # Hva gaten kontrollerer og ikke kan kontrollere
+├── deploy-runbook.md           # Utrulling og rollback, steg for steg
+└── iac-avstemming.md           # Avstemming av Bicep mot produksjon
 ```
 
 ## Deployment
@@ -132,8 +142,9 @@ Infrastructure/
 ### Påkrevde miljøvariabler / Required Environment Variables
 
 ```bash
-# MySQL admin passord (påkrevd)
-export MYSQL_ADMIN_PASSWORD='<your-secure-password>'
+# MySQL admin passord: IKKE med ved vanlig utrulling (serveren skrives ikke, `mysqlServerMode = 'existing'`).
+# Bare når en NY server opprettes (modus `create`, se docs/deploy-runbook.md §2.3):
+# export MYSQL_ADMIN_PASSWORD='<your-secure-password>'
 
 # RevenueCat secrets (påkrevd for Data API)
 export REVENUECAT_SECRET_API_KEY='<revenuecat-secret-key>'
@@ -145,76 +156,60 @@ export ADMIN_ENTRA_CLIENT_SECRET='<entra-client-secret>'
 
 **VIKTIG**: Disse verdiene skal ALDRI committes til Git. De leses fra miljøvariabler via `readEnvironmentVariable()` i parameter-filene.
 
-### Full infrastruktur deployment
+### Alle utrullinger går gjennom sikkerhetsgaten
 
-Deploy full infrastruktur (VNet, MySQL, Key Vault og APIs) med `deploy.sh`. Static Web App er ikke med; den deployes separat (se «Separate deployments»):
+Produksjon har håndlagde ting som ikke står i Bicep, og et nested objekt (app settings, subnett, NSG-regler) erstattes som
+helhet også i Incremental-modus. En utrulling fra en mal som ikke stemmer med produksjon sletter derfor settings og regler.
+`deploy.sh` kjører en read-only, fail-closed gate først (offline evaluering, live-lesing og what-if mot manifestet), og
+deployer bare etter skrevet godkjenning.
 
 ```bash
-cd Infrastructure/scripts
-./deploy.sh
+bash Infrastructure/scripts/deploy.sh --deployment main --dry-run    # prøvekjøring: alt unntatt deploy
+bash Infrastructure/scripts/verify-secure-parameters.sh --deployment main
+bash Infrastructure/scripts/deploy.sh --deployment main
 ```
 
-Scriptet kjører følgende steg:
+Nøkler (`--deployment`) og hva hver får endre står i `Infrastructure/safety/manifest.json`:
 
-1. **Pre-flight checks**: Verifiserer Azure CLI, login, subscription, ressursgruppe og miljøvariabler
-2. **Validate local files**: Bygger og validerer Bicep-filer lokalt
-3. **Azure validation**: Kjører `az deployment group validate`
-4. **What-If preview**: Viser hvilke endringer som vil bli gjort
-5. **Deploy**: Deployer infrastrukturen (krever bekreftelse)
-6. **Verify**: Sjekker at App Services kjører
-7. **GitHub identities**: Oppretter/verifiserer managed identities for GitHub Actions
-8. **OIDC federation**: Konfigurerer federated credentials for GitHub deployment
-9. **RBAC**: Tildeler Website Contributor rolle for CI/CD
+| Nøkkel | Parameterfil | Hva |
+|---|---|---|
+| `main` | `prod.bicepparam` | VNet, MySQL, Key Vault, overvåking, plan, Data API, Auth API (ikke Admin App, ikke Static Web App) |
+| `adminapp-a` | `prod.adminapp.bicepparam` | admin-appen (Contributor) |
+| `adminapp-b-rbac` | `prod.adminapp.rbac-owner.bicepparam` | Key Vault-tilgang for admin (krever Owner) |
+| `adminapp-c-domain` | `prod.adminapp.domain-admin-cetchapp-com.bicepparam` | domene og TLS for admin |
+| `swa-web` | `prod.staticwebapp-web.bicepparam` | Static Web App (uten domener) |
+| `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol` | `prod.staticwebapp-web.domain-*.bicepparam` | ett domene per utrulling |
+
+`deploy.sh` nekter å kjøre uten terminal (godkjenningen skrives), uten ren arbeidskopi på `origin/main` og uten at
+hemmelige parametere er satt. Bruk aldri `az deployment group create` direkte: det omgår gaten. Eksemplene i kommentarene
+øverst i parameterfilene er eldre enn gaten og er bare dokumentasjon av hva filen gjør.
+
+Les [docs/deploy-safety-gate.md](docs/deploy-safety-gate.md) (hva gaten kontrollerer, og hva den ikke kan) og
+[docs/deploy-runbook.md](docs/deploy-runbook.md) (sikkerhetskopi, etterkontroll, rollback) før første utrulling.
 
 ### Separate deployments
 
 #### Admin App (tre-trinns deployment)
 
-Admin appen krever tre separate deployments:
+Admin appen krever tre separate utrullinger, hver med sin nøkkel og hver bak gaten:
 
-**A. Admin app (Contributor-tilgang er nok):**
 ```bash
-az deployment group create -g rg-invi-prod-swc-001 \
-  --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
-  --name invi-prod-adminapp-001 \
-  --parameters Infrastructure/environments/prod.adminapp.bicepparam
-```
-
-**B. RBAC for Key Vault (krever Owner-rolle):**
-```bash
-az deployment group create -g rg-invi-prod-swc-001 \
-  --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
-  --name invi-prod-adminapp-rbac-001 \
-  --parameters Infrastructure/environments/prod.adminapp.rbac-owner.bicepparam
-```
-
-**C. Custom domain og TLS:**
-```bash
-az deployment group create -g rg-invi-prod-swc-001 \
-  --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
-  --name invi-prod-adminapp-domain-001 \
-  --parameters Infrastructure/environments/prod.adminapp.domain-admin-cetchapp-com.bicepparam
+bash Infrastructure/scripts/deploy.sh --deployment adminapp-a          # A: Contributor er nok
+bash Infrastructure/scripts/deploy.sh --deployment adminapp-b-rbac     # B: krever Owner-rolle (Key Vault-tilgang)
+bash Infrastructure/scripts/deploy.sh --deployment adminapp-c-domain   # C: domene og TLS
 ```
 
 **Rekkefølge**: A (uten Easy Auth) → Entra app registration (manuelt) → Key Vault secret (manuelt) → B → DNS (manuelt) → C → A (med Easy Auth) → Application code
 
 #### Static Web App
 
-Deploy Static Web App uten domener:
 ```bash
-az deployment group create -g rg-invi-prod-swc-001 \
-  --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
-  --name invi-prod-swa-web-001 \
-  --parameters Infrastructure/environments/prod.staticwebapp-web.bicepparam
+bash Infrastructure/scripts/deploy.sh --deployment swa-web                      # uten domener
+bash Infrastructure/scripts/deploy.sh --deployment swa-domain-invi-lol          # ett domene per utrulling
 ```
 
-Deploy custom domains separat (ett domene per deployment):
-```bash
-az deployment group create -g rg-invi-prod-swc-001 \
-  --subscription 563af248-8461-42a9-8121-e350e48ca7b6 \
-  --name invi-prod-swa-web-domain-invi-lol \
-  --parameters Infrastructure/environments/prod.staticwebapp-web.domain-invi-lol.bicepparam
-```
+Domeneutrullingene venter på at Azure validerer domenet (DNS-posten må publiseres mens utrullingen kjører, se kommentarene i
+`prod.staticwebapp-web.domain-*.bicepparam`). Kjør dem fra en terminal som kan stå åpen.
 
 ## Sikkerhet / Security
 
@@ -254,6 +249,9 @@ CI/CD bruker federated credentials med GitHub OIDC:
 - **Auth API**: `id-gha-invi-auth-api-prod-001`
 - **Data API**: `id-gha-invi-data-api-prod-001`
 - Rolle: Website Contributor (på app-nivå, ikke subscription-nivå)
+
+Identitetene og credentials er opprettet utenfor Bicep. `deploy.sh` oppretter dem ikke lenger; sikkerhetsgaten leser dem og
+stopper ved en ny eller endret tildeling/credential som ikke er gjennomgått i manifestet.
 
 ## Domener og URLer / Domains and URLs
 
@@ -310,7 +308,7 @@ Admin app Easy Auth bruker en Entra client secret som utløper. Rotasjon:
 
 1. Opprett ny client secret i Entra app registration "Invi Production Admin"
 2. `export ADMIN_ENTRA_CLIENT_SECRET='<new-secret>'`
-3. Redeploy admin app: `az deployment group create ... --parameters prod.adminapp.bicepparam`
+3. Redeploy admin app bak gaten: `bash Infrastructure/scripts/deploy.sh --deployment adminapp-a`. Ved rotasjon *skal* `verify-secure-parameters.sh --deployment adminapp-a` vise `MISMATCH` for denne verdien (den bytter ut den gamle); er det `MATCH`, har du ikke byttet
 
 ### Skalere App Service Plan
 
@@ -325,9 +323,11 @@ Endre disse verdiene og redeploy.
 
 ## Troubleshooting
 
-### Deployment feiler med "MYSQL_ADMIN_PASSWORD is not set"
+### Deployment feiler med "MYSQL_ADMIN_PASSWORD does not exist"
 
-Løsning: `export MYSQL_ADMIN_PASSWORD='<password>'`
+En vanlig utrulling leser ikke MySQL-passordet. Feilen betyr at parameterfilen er satt til å opprette en server
+(`mysqlServerMode = 'create'`). Er serveren der fra før, skal modus være `existing`: gaten stopper en `create` på en
+eksisterende server fordi den ville nullstilt administratorpassordet.
 
 ### App Service kan ikke nå Key Vault
 

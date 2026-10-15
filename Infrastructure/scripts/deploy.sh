@@ -1,689 +1,232 @@
 #!/usr/bin/env bash
-
+# Deploys ONE reviewed Bicep deployment to production, behind the safety gate. Incremental mode only.
+#
+#   Infrastructure/scripts/deploy.sh --deployment <key> [--dry-run] [--allow-non-main]
+#
+#   --deployment  key in Infrastructure/safety/manifest.json: main, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
+#                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol
+#   --dry-run     rehearsal: runs every check and the gate, prints what would be deployed and every reason a real run would
+#                 stop, and NEVER deploys (it also needs no terminal and tolerates a dirty tree and missing secure parameters,
+#                 which it then reports as blockers)
+#
+# What changed from the previous version of this script (see docs/deploy-safety-gate.md):
+#   - the gate (preflight.sh) must PASS first, and its approval is bound to the digest of the exact files and evidence it saw
+#   - the what-if is judged by the gate and shown to you reduced (no secret values); the raw what-if is never printed
+#   - approval is typed, per deployment, per digest; there is no standing "yes"; evidence older than the manifest's limit is
+#     refused even after the approval is typed
+#   - template and parameter file come from the manifest, never from ambient state; the subscription is passed on every call
+#     and the default subscription of the Azure CLI is never changed
+#   - `az bicep build` no longer writes a main.json into the tree
+#   - the old steps that created GitHub identities, federated credentials and role assignments with imperative CLI calls are
+#     gone: they bypassed Bicep, and step 8 enforced the stale prod-migration credentials. Identities and their credentials
+#     are now only READ and compared by the gate; adopting them into Bicep is a separate change (IaC-5).
+#
+# Secure parameters are read from the environment (see the manifest's secureEnvironment for the deployment). They are used
+# only by the deployment itself; the gate runs on placeholders.
 set -euo pipefail
+export MSYS_NO_PATHCONV=1
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$HERE/../.." && pwd)"
+MANIFEST="$REPO_ROOT/Infrastructure/safety/manifest.json"
+to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+# git.exe and node.exe are native Windows programs: with MSYS_NO_PATHCONV=1 an MSYS path (/c/Users/...) is passed through
+# unchanged and they cannot open it. Every path that goes to a native program is converted first.
+REPO_ROOT_N="$(to_native "$REPO_ROOT")"
+
+DEPLOYMENT=""
+ALLOW_NON_MAIN=0
+DRY_RUN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --deployment) DEPLOYMENT="${2:-}"; shift 2 ;;
+    --allow-non-main) ALLOW_NON_MAIN=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$DEPLOYMENT" ] || { echo "ERROR: --deployment <key> is required (see --help)" >&2; exit 2; }
 
 echo "======================================"
-echo " INVI Azure deployment"
+echo " INVI Azure deployment: $DEPLOYMENT$([ "$DRY_RUN" -eq 1 ] && echo ' (DRY RUN: nothing will be deployed)')"
 echo "======================================"
+
+# A blocker stops a real run at once; a dry run records it and carries on, so the rehearsal shows everything at once.
+BLOCKERS=()
+block() {
+  if [ "$DRY_RUN" -eq 1 ]; then
+    BLOCKERS+=("$1")
+    echo "BLOCKER: $1"
+  else
+    echo "ERROR: $1" >&2
+    exit "${2:-1}"
+  fi
+}
+
+# Approval has to be given by a person at a terminal (a dry run asks for nothing).
+if [ "$DRY_RUN" -eq 0 ] && { [ ! -t 0 ] || [ ! -t 1 ]; }; then
+  echo "ERROR: this script needs an interactive terminal: the approval is typed." >&2
+  exit 2
+fi
+for tool in az node git; do command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: $tool is not installed." >&2; exit 2; }; done
+
+MANIFEST_N="$(to_native "$MANIFEST")"
+field() { node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); const d=m.deployments?.[process.argv[2]]; if(!d){process.exit(3)} const v=process.argv[3].split(".").reduce((a,k)=>a?.[k],{scope:m.scope,d,top:m}); process.stdout.write(Array.isArray(v)?v.join(" "):String(v??""))' "$MANIFEST_N" "$DEPLOYMENT" "$1"; }
+
+SUB="$(field scope.subscriptionId)" || { echo "ERROR: '$DEPLOYMENT' is not a deployment in the manifest." >&2; exit 2; }
+RG="$(field scope.resourceGroup)"
+TEMPLATE="$(field d.template)"
+PARAMETERS="$(field d.parameters)"
+DEPLOYMENT_NAME="$(field d.deploymentName)"
+SECURE="$(field d.secureEnvironment)"
+MAX_AGE="$(field top.maxEvidenceAgeMinutes)"
+MAX_AGE="${MAX_AGE:-30}"
+
+echo "Subscription:   $SUB"
+echo "Resource group: $RG"
+echo "Template:       $TEMPLATE"
+echo "Parameters:     $PARAMETERS"
+echo "Name / mode:    $DEPLOYMENT_NAME / Incremental"
 echo
 
-
-# --------------------------------------------------
-# Configuration
-# --------------------------------------------------
-
-
-# CetchApp Prod. Pinned explicitly so the script can never inherit an
-# ambient subscription and deploy production into the dev subscription.
-SUBSCRIPTION_ID="563af248-8461-42a9-8121-e350e48ca7b6"
-
-RESOURCE_GROUP="rg-invi-prod-swc-001"
-LOCATION="swedencentral"
-DEPLOYMENT_NAME="invi-prod-infrastructure-001"
-AUTH_APP="app-invi-auth-api-prod-001"
-DATA_APP="app-invi-data-api-prod-001"
-
-
-WEBSITE_CONTRIBUTOR_ROLE_ID="de139f84-1756-47ae-9be6-808fbbe84772"
-
-
-# --------------------------------------------------
-# GitHub deployment identities
-# --------------------------------------------------
-
-AUTH_GHA_IDENTITY="id-gha-invi-auth-api-prod-001"
-DATA_GHA_IDENTITY="id-gha-invi-data-api-prod-001"
-
-
-
-
-
-
-# --------------------------------------------------
-# GitHub OIDC federation
-# -
-
-AUTH_FIC="fic-gha-invi-auth-api-prod-migration"
-DATA_FIC="fic-gha-invi-data-api-prod-migration"
-
-GITHUB_OIDC_ISSUER="https://token.actions.githubusercontent.com"
-GITHUB_OIDC_AUDIENCE="api://AzureADTokenExchange"
-
-AUTH_GITHUB_SUBJECT="repo:CetchApp@262199775/cetchapp-auth-api@1171937595:environment:prod-migration"
-
-DATA_GITHUB_SUBJECT="repo:CetchApp@262199775/cetchapp-data-api@1222823213:environment:prod-migration"
-
-echo "Deployment configuration:"
-echo "Subscription:   $SUBSCRIPTION_ID"
-echo "Resource group: $RESOURCE_GROUP"
-echo "Location:       $LOCATION"
-
-
-# --------------------------------------------------
-# Step 1 - Pre-flight checks
-# --------------------------------------------------
-
-echo
-echo "Checking Azure CLI..."
-
-if ! command -v az >/dev/null 2>&1; then
-  echo "ERROR: Azure CLI is not installed."
-  exit 1
+# ---- 1. the working tree is what was reviewed ---------------------------------------------------------------------------
+GATE_ARGS=()
+if [ -n "$(git -C "$REPO_ROOT_N" status --porcelain)" ]; then
+  block "the working tree has uncommitted changes. Deploy only what is committed and reviewed."
+  GATE_ARGS+=(--allow-dirty)
+fi
+echo "Fetching origin to compare with main (read-only)..."
+if git -C "$REPO_ROOT_N" fetch --quiet origin main; then
+  HEAD_SHA="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
+  MAIN_SHA="$(git -C "$REPO_ROOT_N" rev-parse origin/main)"
+  if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
+    if [ "$ALLOW_NON_MAIN" -ne 1 ]; then
+      block "HEAD ($HEAD_SHA) is not origin/main ($MAIN_SHA). Deployments follow merge; --allow-non-main is only for a reviewed commit that is not merged yet."
+    else
+      echo "WARNING: deploying $HEAD_SHA, which is not origin/main ($MAIN_SHA)."
+    fi
+  fi
+else
+  HEAD_SHA="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
+  block "could not fetch origin/main; cannot verify what is deployed."
 fi
 
-echo "Azure CLI found."
-
-
-echo
-echo "Checking Azure login..."
-
-if ! az account show >/dev/null 2>&1; then
-  echo "ERROR: You are not logged in to Azure."
-  echo "Run: az login"
-  exit 1
-fi
-
-echo "Azure login OK."
-
-
-echo
-echo "Selecting target subscription..."
-
-az account set --subscription "$SUBSCRIPTION_ID"
-
-ACTIVE_SUBSCRIPTION=$(az account show --query "id" --output tsv)
-
-if [[ "$ACTIVE_SUBSCRIPTION" != "$SUBSCRIPTION_ID" ]]; then
-  echo "ERROR: Active subscription does not match the target subscription."
-  echo "Expected: $SUBSCRIPTION_ID"
-  echo "Actual:   $ACTIVE_SUBSCRIPTION"
-  exit 1
-fi
-
-echo "Subscription selected and verified."
-
-
-echo
-echo "Current Azure subscription:"
-
-az account show \
-  --query "{Name:name, SubscriptionId:id}" \
-  --output table
-
-
-echo
-echo "Checking resource group..."
-
-if ! az group show \
-  --name "$RESOURCE_GROUP" \
-  --only-show-errors \
-  --output none 2>/dev/null; then
-
-  echo "ERROR: Resource group not found: $RESOURCE_GROUP"
-  exit 1
-fi
-
-echo "Resource group found."
-
-
-echo
-echo "Checking MySQL admin password..."
-
-if [[ -z "${MYSQL_ADMIN_PASSWORD:-}" ]]; then
-  echo "ERROR: MYSQL_ADMIN_PASSWORD is not set."
-  echo "The parameter file reads it with readEnvironmentVariable()."
-  echo "Run: export MYSQL_ADMIN_PASSWORD='<password>'"
-  exit 1
-fi
-
-echo "MySQL admin password found."
-
-echo
-echo "Checking RevenueCat settings..."
-
-for variable in REVENUECAT_SECRET_API_KEY REVENUECAT_WEBHOOK_AUTHORIZATION; do
-  if [[ -z "${!variable:-}" ]]; then
-    echo "ERROR: $variable is not set."
-    echo "The parameter file reads it with readEnvironmentVariable(); the Data API's"
-    echo "App Setting would otherwise be replaced by an empty value."
-    echo "Copy the current value from app-invi-data-api-prod-001 and run: export $variable='<value>'"
-    exit 1
+# ---- 2. secure parameters are present and are not placeholders ---------------------------------------------------------
+for name in $SECURE; do
+  value="${!name:-}"
+  if [ -z "${value//[[:space:]]/}" ]; then
+    block "$name is not set (the parameter file reads it with readEnvironmentVariable)."
+  else
+    case "$value" in __GATE:*) block "$name holds a gate placeholder, not a real value." ;; esac
   fi
 done
+[ -z "$SECURE" ] || echo "Secure parameters required: $SECURE (values are never shown)"
 
-echo "RevenueCat settings found."
-
-
+# ---- 3. the gate -------------------------------------------------------------------------------------------------------
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/invi-deploy.XXXXXX")"
 echo
-echo "Step 1 completed successfully."
-
-
-# --------------------------------------------------
-# Step 2 - Validate local IaC files
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 2 - Validate local IaC files"
-echo "======================================"
-echo
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
-BICEP_FILE="$PROJECT_ROOT/main.bicep"
-PARAM_FILE="$PROJECT_ROOT/environments/prod.bicepparam"
-
-
-echo "Checking main Bicep file..."
-
-if [[ ! -f "$BICEP_FILE" ]]; then
-  echo "ERROR: Bicep file not found:"
-  echo "$BICEP_FILE"
+echo "Running the safety gate (read-only; several minutes)..."
+if ! bash "$HERE/preflight.sh" --deployment "$DEPLOYMENT" --work "$WORK" ${GATE_ARGS[@]+"${GATE_ARGS[@]}"}; then
+  block "the safety gate did not pass. Report: $WORK/report.md"
+fi
+REPORT="$WORK/report.json"
+if [ ! -f "$REPORT" ]; then
+  block "the gate produced no report"
+  echo "DRY RUN finished with blockers; nothing was deployed."
   exit 1
 fi
+DIGEST="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).digest)' "$(to_native "$REPORT")")"
+SHORT="${DIGEST:0:12}"
 
-echo "Bicep file found."
-
-
+# ---- 4. what the approval covers ---------------------------------------------------------------------------------------
 echo
-echo "Checking parameter file..."
-
-if [[ ! -f "$PARAM_FILE" ]]; then
-  echo "ERROR: Parameter file not found:"
-  echo "$PARAM_FILE"
-  exit 1
-fi
-
-echo "Parameter file found."
-
-
+echo "================ What you are approving ================"
+node -e '
+const fs = require("fs");
+const r = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const m = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const d = m.deployments[process.argv[3]];
+console.log(`gate verdict ${r.verdict}, digest ${r.digest.slice(0, 12)}…, what-if ${JSON.stringify(r.whatIf.counts)}`);
+console.log(`evidence collected ${r.evidence.liveCollectedAt}`);
+if (d.mysqlServer) {
+  const text = { existing: "NOT written: the administrator password and every server property stay as they are", update: "written WITHOUT administratorLogin and administratorLoginPassword", create: "CREATED with login and password (only valid when the server does not exist)" }[d.mysqlServer.mode];
+  console.log(`\nMySQL server ${d.mysqlServer.name}: mode ${d.mysqlServer.mode} - ${text}`);
+}
+console.log(`\nResources this deployment may change (manifest, "touches"):`);
+for (const t of d.touches ?? []) console.log(`  - ${t.type} ${t.name}`);
+const allowed = r.findings.filter((f) => f.severity === "allowed");
+console.log(`\nChanges the manifest allows (${allowed.length}):`);
+for (const f of allowed) console.log(`  - ${f.id} ${f.subject}: ${f.message}`.slice(0, 200));
+console.log(`\nResidual risks the gate cannot verify (${r.residualRisks.length}):`);
+for (const x of r.residualRisks) console.log(`  - ${x.id}: ${x.text}`.slice(0, 400));
+' "$(to_native "$REPORT")" "$MANIFEST_N" "$DEPLOYMENT"
+echo "========================================================"
 echo
-echo "Building Bicep..."
+echo "Full report: $WORK/report.md"
 
-az bicep build \
-  --file "$BICEP_FILE"
+DEPLOY_CMD=(az deployment group create --name "$DEPLOYMENT_NAME" --resource-group "$RG" --subscription "$SUB"
+            --parameters "$(to_native "$REPO_ROOT/$PARAMETERS")" --mode Incremental --only-show-errors --output none)
 
-echo "Bicep build succeeded."
-
-echo
-echo "Step 2 completed successfully."
-
-# --------------------------------------------------
-# Step 3 - Validate deployment with Azure
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 3 - Azure deployment validation"
-echo "======================================"
-echo
-
-echo "Validating deployment with Azure Resource Manager..."
-
-if az deployment group validate \
-  --resource-group "$RESOURCE_GROUP" \
-  --parameters "$PARAM_FILE" \
-  --only-show-errors \
-  --output none; then
-
+if [ "$DRY_RUN" -eq 1 ]; then
   echo
-  echo "Azure deployment validation succeeded."
-else
-  echo
-  echo "ERROR: Azure deployment validation failed."
-  exit 1
-fi
-
-echo
-echo "Step 3 completed successfully."
-
-
-# --------------------------------------------------
-# Step 4 - Preview Azure changes with What-If
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 4 - Azure What-If"
-echo "======================================"
-echo
-
-echo "Previewing proposed infrastructure changes..."
-echo
-
-az deployment group what-if \
-  --name "$DEPLOYMENT_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --parameters "$PARAM_FILE" \
-  --mode Incremental
-
-echo
-echo "What-If completed successfully."
-echo
-echo "Review the changes above before deployment."
-echo
-echo "Step 4 completed successfully."
-
-
-# --------------------------------------------------
-# Step 5 - Deploy infrastructure
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 5 - Deploy infrastructure"
-echo "======================================"
-echo
-
-echo "Target resource group: $RESOURCE_GROUP"
-echo "Deployment name:       $DEPLOYMENT_NAME"
-echo "Deployment mode:       Incremental"
-echo
-
-read -r -p "Proceed with deployment? [y/N]: " CONFIRM
-
-case "$CONFIRM" in
-  y|Y|yes|YES)
+  echo "DRY RUN. A real run would execute exactly this after the typed approval:"
+  echo "  ${DEPLOY_CMD[*]}"
+  if [ "${#BLOCKERS[@]}" -gt 0 ]; then
     echo
-    echo "Deployment approved."
-    ;;
-  *)
-    echo
-    echo "Deployment cancelled."
-    exit 0
-    ;;
-esac
+    echo "A real run would STOP for ${#BLOCKERS[@]} reason(s):"
+    for b in "${BLOCKERS[@]}"; do echo "  - $b"; done
+    echo "Nothing was deployed."
+    exit 1
+  fi
+  echo "No blocker found. Nothing was deployed."
+  exit 0
+fi
 
+# ---- 5. approval, bound to the digest ----------------------------------------------------------------------------------
+echo "Type exactly   DEPLOY $DEPLOYMENT $SHORT   to deploy, anything else cancels."
+read -r -p "> " CONFIRM
+if [ "$CONFIRM" != "DEPLOY $DEPLOYMENT $SHORT" ]; then
+  echo "Cancelled. Nothing was deployed."
+  exit 0
+fi
+
+# The files must still be the ones the gate saw, and the evidence must still be fresh: the approval may have waited.
+CURRENT_HEAD="$(git -C "$REPO_ROOT_N" rev-parse HEAD)"
+if [ "$CURRENT_HEAD" != "$HEAD_SHA" ] || [ -n "$(git -C "$REPO_ROOT_N" status --porcelain)" ]; then
+  echo "ERROR: the working tree changed after the gate ran. Nothing was deployed." >&2
+  exit 1
+fi
+AGE_MIN="$(node -e 'const r=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(Math.floor((Date.now()-new Date(r.evidence.liveCollectedAt).getTime())/60000))' "$(to_native "$REPORT")")"
+if ! [ "$AGE_MIN" -ge 0 ] 2>/dev/null || [ "$AGE_MIN" -gt "$MAX_AGE" ]; then
+  echo "ERROR: the gate's evidence is $AGE_MIN minute(s) old (limit $MAX_AGE). Production may have changed; run this script again. Nothing was deployed." >&2
+  exit 1
+fi
+
+# ---- 6. deploy ---------------------------------------------------------------------------------------------------------
 echo
-echo "Deploying infrastructure..."
+echo "Deploying $DEPLOYMENT_NAME (Incremental)..."
+"${DEPLOY_CMD[@]}"
+STATE="$(az deployment group show --name "$DEPLOYMENT_NAME" --resource-group "$RG" --subscription "$SUB" --query properties.provisioningState --output tsv --only-show-errors)"
+echo "Deployment state: $STATE"
+[ "$STATE" = "Succeeded" ] || { echo "ERROR: deployment did not finish in Succeeded state. See docs/deploy-runbook.md (rollback)." >&2; exit 1; }
+
+# ---- 7. verify ---------------------------------------------------------------------------------------------------------
 echo
-
-if az deployment group create \
-  --name "$DEPLOYMENT_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --parameters "$PARAM_FILE" \
-  --mode Incremental \
-  --only-show-errors \
-  --output none; then
-
-  echo
-  echo "Azure deployment command completed successfully."
+echo "Verifying the result (the gate again, on the new state)..."
+POST="$(mktemp -d "${TMPDIR:-/tmp}/invi-postdeploy.XXXXXX")"
+if bash "$HERE/preflight.sh" --deployment "$DEPLOYMENT" --work "$POST"; then
+  echo "Post-deployment verification passed. Report: $POST/report.md"
 else
-  echo
-  echo "ERROR: Azure deployment failed."
+  echo "ERROR: the deployment succeeded but the post-deployment verification FAILED. Investigate now: $POST/report.md (see docs/deploy-runbook.md)" >&2
   exit 1
 fi
 
-DEPLOYMENT_STATE=$(az deployment group show \
-  --name "$DEPLOYMENT_NAME" \
-  --resource-group "$RESOURCE_GROUP" \
-  --query "properties.provisioningState" \
-  --output tsv \
-  --only-show-errors)
+for app in $(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(Object.keys(m.apps??{}).join(" "))' "$MANIFEST_N"); do
+  state="$(az webapp show --resource-group "$RG" --name "$app" --subscription "$SUB" --query state --output tsv --only-show-errors 2>/dev/null || echo unknown)"
+  echo "App $app: $state"
+  [ "$state" = "Running" ] || { echo "ERROR: $app is not running." >&2; exit 1; }
+done
 
 echo
-echo "Deployment state: $DEPLOYMENT_STATE"
-
-if [[ "$DEPLOYMENT_STATE" != "Succeeded" ]]; then
-  echo "ERROR: Deployment did not finish in Succeeded state."
-  exit 1
-fi
-
-echo
-echo "Infrastructure deployment succeeded."
-echo
-echo "Step 5 completed successfully."
-
-
-# --------------------------------------------------
-# Step 6.1 - Verify App Service runtime state
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 6.1 - Verify App Services"
-echo "======================================"
-echo
-
-echo "Checking Auth API state..."
-
-if ! AUTH_APP_STATE=$(az webapp show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AUTH_APP" \
-  --query "state" \
-  --output tsv \
-  --only-show-errors); then
-
-  echo "ERROR: Could not retrieve Auth API state."
-  exit 1
-fi
-
-echo "Auth API state: $AUTH_APP_STATE"
-
-if [[ "$AUTH_APP_STATE" != "Running" ]]; then
-  echo "ERROR: Auth API is not running."
-  exit 1
-fi
-
-
-echo
-echo "Checking Data API state..."
-
-if ! DATA_APP_STATE=$(az webapp show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$DATA_APP" \
-  --query "state" \
-  --output tsv \
-  --only-show-errors); then
-
-  echo "ERROR: Could not retrieve Data API state."
-  exit 1
-fi
-
-echo "Data API state: $DATA_APP_STATE"
-
-if [[ "$DATA_APP_STATE" != "Running" ]]; then
-  echo "ERROR: Data API is not running."
-  exit 1
-fi
-
-
-echo
-echo " App Services are running."
-echo
-echo "Step 6.1 completed successfully."
-
-
-# --------------------------------------------------
-# Step 7 - Ensure GitHub deployment identities
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 7 - GitHub deployment identities"
-echo "======================================"
-echo
-
-
-echo "Checking Auth GitHub deployment identity..."
-
-if az identity show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AUTH_GHA_IDENTITY" \
-  --only-show-errors \
-  --output none 2>/dev/null; then
-
-  echo "Auth GitHub identity already exists."
-
-else
-  echo "Auth GitHub identity does not exist."
-  echo "Creating Auth GitHub identity..."
-
-  az identity create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$AUTH_GHA_IDENTITY" \
-    --location "$LOCATION" \
-    --only-show-errors \
-    --output none
-
-  echo "Auth GitHub identity created."
-fi
-
-
-echo
-echo "Checking Data GitHub deployment identity..."
-
-if az identity show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$DATA_GHA_IDENTITY" \
-  --only-show-errors \
-  --output none 2>/dev/null; then
-
-  echo "Data GitHub identity already exists."
-
-else
-  echo "Data GitHub identity does not exist."
-  echo "Creating Data GitHub identity..."
-
-  az identity create \
-    --resource-group "$RESOURCE_GROUP" \
-    --name "$DATA_GHA_IDENTITY" \
-    --location "$LOCATION" \
-    --only-show-errors \
-    --output none
-
-  echo "Data GitHub identity created."
-fi
-
-
-echo
-echo "Step 7 completed successfully."
-
-
-
-# --------------------------------------------------
-# Step 8 - Ensure GitHub OIDC federation
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 8 - GitHub OIDC federation"
-echo "======================================"
-echo
-
-
-echo "Checking Auth API federated credential..."
-
-if az identity federated-credential show \
-  --resource-group "$RESOURCE_GROUP" \
-  --identity-name "$AUTH_GHA_IDENTITY" \
-  --name "$AUTH_FIC" \
-  --only-show-errors \
-  --output none 2>/dev/null; then
-
-  echo "Auth federated credential already exists."
-
-else
-  echo "Auth federated credential does not exist."
-  echo "Creating Auth federated credential..."
-
-  az identity federated-credential create \
-    --resource-group "$RESOURCE_GROUP" \
-    --identity-name "$AUTH_GHA_IDENTITY" \
-    --name "$AUTH_FIC" \
-    --issuer "$GITHUB_OIDC_ISSUER" \
-    --subject "$AUTH_GITHUB_SUBJECT" \
-    --audiences "$GITHUB_OIDC_AUDIENCE" \
-    --only-show-errors \
-    --output none
-
-  echo "Auth federated credential created."
-fi
-CURRENT_AUTH_SUBJECT=$(az identity federated-credential show \
-  --resource-group "$RESOURCE_GROUP" \
-  --identity-name "$AUTH_GHA_IDENTITY" \
-  --name "$AUTH_FIC" \
-  --query "subject" \
-  --output tsv \
-  --only-show-errors)
-
-if [[ "$CURRENT_AUTH_SUBJECT" != "$AUTH_GITHUB_SUBJECT" ]]; then
-  echo "ERROR: Auth federated credential subject does not match expected configuration."
-  echo "Expected: $AUTH_GITHUB_SUBJECT"
-  echo "Actual:   $CURRENT_AUTH_SUBJECT"
-  exit 1
-fi
-
-echo "Auth federated credential subject verified."
-
-
-
-echo
-echo "Checking Data API federated credential..."
-
-if az identity federated-credential show \
-  --resource-group "$RESOURCE_GROUP" \
-  --identity-name "$DATA_GHA_IDENTITY" \
-  --name "$DATA_FIC" \
-  --only-show-errors \
-  --output none 2>/dev/null; then
-
-  echo "Data federated credential already exists."
-
-else
-  echo "Data federated credential does not exist."
-  echo "Creating Data federated credential..."
-
-  az identity federated-credential create \
-    --resource-group "$RESOURCE_GROUP" \
-    --identity-name "$DATA_GHA_IDENTITY" \
-    --name "$DATA_FIC" \
-    --issuer "$GITHUB_OIDC_ISSUER" \
-    --subject "$DATA_GITHUB_SUBJECT" \
-    --audiences "$GITHUB_OIDC_AUDIENCE" \
-    --only-show-errors \
-    --output none
-
-  echo "Data federated credential created."
-fi
-CURRENT_DATA_SUBJECT=$(az identity federated-credential show \
-  --resource-group "$RESOURCE_GROUP" \
-  --identity-name "$DATA_GHA_IDENTITY" \
-  --name "$DATA_FIC" \
-  --query "subject" \
-  --output tsv \
-  --only-show-errors)
-
-if [[ "$CURRENT_DATA_SUBJECT" != "$DATA_GITHUB_SUBJECT" ]]; then
-  echo "ERROR: Data federated credential subject does not match expected configuration."
-  echo "Expected: $DATA_GITHUB_SUBJECT"
-  echo "Actual:   $CURRENT_DATA_SUBJECT"
-  exit 1
-fi
-
-echo "Data federated credential subject verified."
-
-echo
-echo "Step 8 completed successfully."
-
-# --------------------------------------------------
-# Step 9 - Ensure GitHub deployment RBAC
-# --------------------------------------------------
-
-echo
-echo "======================================"
-echo " Step 9 - GitHub deployment RBAC"
-echo "======================================"
-echo
-
-
-# --------------------------------------------------
-# Auth API RBAC
-# --------------------------------------------------
-
-echo "Retrieving Auth deployment identity principal ID..."
-
-AUTH_PRINCIPAL_ID=$(az identity show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AUTH_GHA_IDENTITY" \
-  --query "principalId" \
-  --output tsv \
-  --only-show-errors)
-
-echo "Retrieving Auth App Service resource ID..."
-
-AUTH_APP_ID=$(az webapp show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$AUTH_APP" \
-  --query "id" \
-  --output tsv \
-  --only-show-errors)
-
-
-echo "Checking Auth Website Contributor assignment..."
-
-AUTH_ROLE_COUNT=$(az role assignment list \
-  --assignee-object-id "$AUTH_PRINCIPAL_ID" \
-  --role "$WEBSITE_CONTRIBUTOR_ROLE_ID" \
-  --scope "$AUTH_APP_ID" \
-  --fill-principal-name false \
-  --query "length(@)" \
-  --output tsv \
-  --only-show-errors)
-
-if [[ "$AUTH_ROLE_COUNT" -eq 0 ]]; then
-  echo "Auth Website Contributor assignment does not exist."
-  echo "Creating assignment..."
-
-  az role assignment create \
-    --assignee-object-id "$AUTH_PRINCIPAL_ID" \
-    --assignee-principal-type ServicePrincipal \
-    --role "$WEBSITE_CONTRIBUTOR_ROLE_ID" \
-    --scope "$AUTH_APP_ID" \
-    --only-show-errors \
-    --output none
-
-  echo "Auth Website Contributor assignment created."
-else
-  echo "Auth Website Contributor assignment already exists."
-fi
-
-
-# --------------------------------------------------
-# Data API RBAC
-# --------------------------------------------------
-
-echo
-echo "Retrieving Data deployment identity principal ID..."
-
-DATA_PRINCIPAL_ID=$(az identity show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$DATA_GHA_IDENTITY" \
-  --query "principalId" \
-  --output tsv \
-  --only-show-errors)
-
-echo "Retrieving Data App Service resource ID..."
-
-DATA_APP_ID=$(az webapp show \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$DATA_APP" \
-  --query "id" \
-  --output tsv \
-  --only-show-errors)
-
-
-echo "Checking Data Website Contributor assignment..."
-
-
-DATA_ROLE_COUNT=$(az role assignment list \
-  --assignee-object-id "$DATA_PRINCIPAL_ID" \
-  --role "$WEBSITE_CONTRIBUTOR_ROLE_ID" \
-  --scope "$DATA_APP_ID" \
-  --fill-principal-name false \
-  --query "length(@)" \
-  --output tsv \
-  --only-show-errors)
-
-
-if [[ "$DATA_ROLE_COUNT" -eq 0 ]]; then
-  echo "Data Website Contributor assignment does not exist."
-  echo "Creating assignment..."
-
-  az role assignment create \
-    --assignee-object-id "$DATA_PRINCIPAL_ID" \
-    --assignee-principal-type ServicePrincipal \
-    --role "$WEBSITE_CONTRIBUTOR_ROLE_ID" \
-    --scope "$DATA_APP_ID" \
-    --only-show-errors \
-    --output none
-
-  echo "Data Website Contributor assignment created."
-else
-  echo "Data Website Contributor assignment already exists."
-fi
-
-
-echo
-echo "Step 9 completed successfully."
+echo "Done."
