@@ -27,8 +27,9 @@ nettleser ──https──► studio.invi.lol ──► app-invi-studio-prod-00
 | Ingen `healthCheckPath` på plattformen | Planen har én instans som deles med API-ene. Helsesjekk kan få instansen byttet ut under dem (se `adminapp.bicep`). Appene har egne helseruter: API-et `/api/health`, Studio `/api/health` og `/api/health?deep=1`. |
 | Deploy bare manuelt, fra `main`, i miljøet `production` | Uprøvd kode skal ikke rulles ut av en push. Workflowene bygger og tester ved hver push og PR, men deployer bare ved «Run workflow» med «Deploy» avkrysset. |
 
-Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Onboarding-API-et kjører ingen migreringer; Data API-et oppretter Studio-tabellene selv
-ved oppstart (`OrganizerReservationSchema`).
+Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Data API-et oppretter Studio-tabellene for reservasjoner selv ved oppstart (`OrganizerReservationSchema`). Onboarding-API-et oppretter to egne tabeller
+ved oppstart hvis de mangler, `OrganizerMerch` og `OrganizerTicketSale` (`StudioTablesStartup`, `CREATE TABLE IF NOT EXISTS`, bare nye tabeller): **første oppstart i produksjon legger altså to nye tabeller til i `invi`**,
+og en tilbakerulling av appen lar dem stå (tilbakerullings-SQL ligger i `Migrations/` i API-repoet). Får databasebrukeren ikke lov, logges det og API-et starter likevel; merch og billettsalg svarer da 503.
 
 **«Koblet mot Data API»** betyr databasen og admin-panelet, ikke et HTTP-kall: Studio kaller aldri Data API-et (ingen kode i `invi-studio` gjør det, og ingen CORS-endring
 trengs: Studio kaller fra serveren, og Data API-et tillater uansett alle origins uten credentials). Admin-appen kaller Data API-ets admin-ruter
@@ -217,8 +218,11 @@ fra produksjonsloggene til Data API-et (Log Analytics, 30 dager, lest 2026-10-16
   `MarkerIconKey`, `RequiresPreciseTapArea`, `IsRouteType`) brukes av `/api/venue-types` (registrering og profil). Studios dype helsesjekk (`/api/health?deep=1`) leser venue-typene og svarer `503` med `problem: "schema"` hvis noe av dette mangler,
   så ett kall etter utrulling avgjør det (§9).
 * `OrganizersTable`: API-et bruker ti kolonner som Data API-et ikke bruker og som loggene derfor ikke beviser: `OrganizerSlug`, `GeoJson`, `GeometryType`, `TapTargetGeoJson`, `RecurrenceNote`, `LastCheckedAt`, `CreatedAt`, `UpdatedAt`, `CancellationNoticeMinutes` og
-  `ReservationApprovalMinutes` (de to siste hører til Studios reservasjoner). `UserTable` må ha bruker 657 (skaperen av aktiviteter).
-* `OrganizerMerch` opprettes av ingen av API-ene: det er en manuell migrering (`Migrations/Apply-OrganizerMerch.ps1` i API-repoet). Uten den svarer merch-ruten `503 «Merch er ikke satt opp ennå»`; resten av Studio virker. Appen leser merch fra Data API-et, og `main` der har ingen merch-kode ennå.
+  `ReservationApprovalMinutes` (de to siste hører til Studios reservasjoner).
+* **Skaperen av aktiviteter.** Aktiviteter som Studio publiserer eies av brukeren i `ADMIN_ACTIVITY_CREATOR_ID` (samme innstilling som Data API-et), og er den ikke satt, av bruker 657, testdatabasens skaper.
+  Hverken denne appen eller produksjonens Data API har innstillingen satt i dag, så 657 gjelder; finnes ikke den brukeren i `UserTable`, feiler opprettelse av aktiviteter (kalender, kamper). Velg en systembruker i produksjon og sett
+  `ADMIN_ACTIVITY_CREATOR_ID` i `appSettings` i `prod.onboardingapi.bicepparam` (og for Data API-et i `prod.bicepparam`) i en egen endring; en beslutning for teamet, ikke noe denne utrullingen gjør.
+* `OrganizerMerch` og `OrganizerTicketSale` opprettes av onboarding-API-et selv ved oppstart (se §1); uten dem svarer merch og billettsalg 503, og resten av Studio virker. Appen leser merch fra Data API-et, og `main` der har ingen merch-kode ennå.
 
 Skrivebeskyttet kontroll fra en vert med nettverksvei til MySQL:
 
@@ -229,10 +233,10 @@ SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' A
 -- Skal gi 10 rader (OrganizersTable-kolonner API-et bruker og loggene ikke beviser)
 SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' AND table_name = 'OrganizersTable' AND column_name IN (
   'OrganizerSlug','GeoJson','GeometryType','TapTargetGeoJson','RecurrenceNote','LastCheckedAt','CreatedAt','UpdatedAt','CancellationNoticeMinutes','ReservationApprovalMinutes');
--- Skal gi 1: aktiviteter opprettes alltid med bruker 657 som skaper
+-- Skal gi 1: skaperen av aktiviteter (657 til ADMIN_ACTIVITY_CREATOR_ID er satt)
 SELECT COUNT(*) FROM UserTable WHERE UserId = 657;
--- 0 eller 1: 1 når migreringen for merch er kjørt
-SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'invi' AND table_name = 'OrganizerMerch';
+-- Skal gi 2 etter første oppstart av API-et (0 før); bare nye tabeller
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'invi' AND table_name IN ('OrganizerMerch','OrganizerTicketSale');
 ```
 
 Mangler kolonnene i `VenueType`, er det en egen, godkjent databaseendring (additiv, nullbare kolonner, for eksempel `ALTER TABLE VenueType ADD COLUMN Description VARCHAR(500) NULL`; API-et leser dem med `COALESCE`), ikke noe denne utrullingen gjør. `ReservationNotificationOutbox`
