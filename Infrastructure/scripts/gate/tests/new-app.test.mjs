@@ -202,3 +202,47 @@ test("collect-live never concludes that an app is absent from a resource list it
   assert.match(log, /-n app-new/, "the app is read as usual: absence has not been proven");
   assert.ok(calls.some((c) => c.name === "resources" && c.rc !== 0), "and the failed list is recorded as a failed call, which stops the gate");
 });
+
+// ---- pass 2 of a domain: what-if reports the binding as a Modify; the manifest entries that the studio-domain-tls deployment uses ---------------
+function tlsPassWorld() {
+  const world = bindingWorld();
+  const binding = world.desiredResources.find((r) => r.type === "Microsoft.Web/sites/hostNameBindings");
+  binding.properties.thumbprint = `[reference('${PREFIX}/Microsoft.Web/certificates/studio.example.test-app-test', '2024-11-01').thumbprint]`;
+  world.desiredResources.push({ type: "Microsoft.Web/certificates", name: "studio.example.test-app-test", properties: { canonicalName: "studio.example.test" } });
+  world.whatif.changes = world.whatif.changes.filter((c) => c.type !== "Microsoft.Web/sites/hostNameBindings");
+  world.whatif.changes.push(
+    { resourceId: "x", type: "Microsoft.Web/certificates", name: "studio.example.test-app-test", changeType: "Create" },
+    {
+      resourceId: "y", type: "Microsoft.Web/sites/hostNameBindings", name: "app-test/studio.example.test", changeType: "Modify",
+      deltas: [{ path: "properties.sslState", op: "Modify", before: "Disabled", after: "SniEnabled" }, { path: "properties.thumbprint", op: "Create", after: "[computed]" }],
+    },
+  );
+  const main = world.manifest.deployments.main;
+  main.touches = [{ type: "Microsoft.Web/sites/hostNameBindings", name: "app-test/studio.example.test" }, { type: "Microsoft.Web/certificates", name: "studio.example.test-app-test" }];
+  main.allowedCreates = [{ type: "Microsoft.Web/certificates", name: "studio.example.test-app-test", why: "managed certificate for the bound host name" }];
+  main.allowedChanges = [
+    sslAllowance(),
+    { resource: "app-test/studio.example.test", property: "properties.sslState", whatif: true, type: "Microsoft.Web/sites/hostNameBindings", why: "what-if shows the pass 2 switch as a Modify" },
+    { resource: "app-test/studio.example.test", property: "properties.thumbprint", whatif: true, type: "Microsoft.Web/sites/hostNameBindings", why: "the thumbprint of the managed certificate created in this deployment" },
+  ];
+  return world;
+}
+
+test("pass 2 (TLS for a bound host name) is accepted when the manifest names the switch, the thumbprint and the certificate", () => {
+  const report = run(tlsPassWorld());
+  for (const id of ["BINDING-SSL-CHANGE", "WHATIF-UNEXPECTED-CHANGE", "WHATIF-RESOURCE-NOT-APPROVED", "WHATIF-CREATE", "BINDING-CERT-MISSING"]) {
+    assert.ok(!ids(report).includes(id), `${id} must not block pass 2: ${JSON.stringify(report.findings.filter((f) => f.id === id))}`);
+  }
+  assert.ok(ids(report, "allowed").includes("BINDING-SSL-CHANGE"));
+  assert.ok(ids(report, "allowed").includes("WHATIF-CHANGE"));
+  assert.ok(ids(report, "info").includes("BINDING-CERT-DECLARED"));
+});
+
+test("pass 2 is refused when the manifest does not approve the Modify that what-if reports", () => {
+  const world = tlsPassWorld();
+  world.manifest.deployments.main.allowedChanges = [sslAllowance()];
+  assert.ok(ids(run(world)).includes("WHATIF-UNEXPECTED-CHANGE"));
+  const unapprovedCertificate = tlsPassWorld();
+  unapprovedCertificate.manifest.deployments.main.allowedCreates = [];
+  assert.ok(ids(run(unapprovedCertificate)).includes("WHATIF-CREATE"));
+});

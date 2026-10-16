@@ -1071,6 +1071,20 @@
           "before": "Disabled",
           "after": "SniEnabled",
           "why": "Pass 2 turns TLS on for the host name that pass 1 bound; the certificate is created in the same deployment"
+        },
+        {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.sslState",
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "why": "what-if shows the same pass 2 switch (Disabled -> SniEnabled) as a Modify of the binding"
+        },
+        {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.thumbprint",
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "why": "the binding gets the thumbprint of the managed certificate that this deployment creates"
         }
       ],
       "residualRisks": [],

@@ -93,7 +93,7 @@ Studio og onboarding-API-et var de første utrullingene som *oppretter* en App S
   (`reference('.../userAssignedIdentities/<navn>')`), akkurat som for en apps egen identitet. Finnes ikke identiteten ennå, er tildelingen `RBAC-UNVERIFIABLE`
   og stopper: rekkefølgen (appene først, så rollene) håndheves av gaten.
 
-Tester: `scripts/gate/tests/new-app.test.mjs` (16) og `Infrastructure/tests/webapp-templates.test.mjs` (12, evaluerer de ekte Bicep-filene offline).
+Tester: `scripts/gate/tests/new-app.test.mjs` (18) og `Infrastructure/tests/webapp-templates.test.mjs` (12, evaluerer de ekte Bicep-filene offline).
 
 ## MySQL-serveren og administratorpassordet
 
