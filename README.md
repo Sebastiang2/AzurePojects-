@@ -69,8 +69,9 @@ Produksjonsmiljøet består av følgende komponenter:
 - Begge: VNet-integrasjon med Route All (privat MySQL og privat Key Vault), system-assigned identitet, HTTPS-only, FTP og basic SCM av, egen Application
   Insights og diagnostikk til `log-invi-prod-001`, og en bruker-tildelt identitet (`id-gha-invi-studio-prod-001`, `id-gha-invi-onboarding-api-prod-001`) med
   federated credential for GitHub-miljøet `production` i appens eget repo (OIDC, ingen hemmelighet). Ingen ny plan, ingen ny database.
-- **Hemmeligheter** er Key Vault-referanser med `Key Vault Secrets User` på den ene hemmeligheten (ikke hvelvet): Studio leser `studio-api-key` og
-  `studio-session-secret`, API-et leser `studio-api-key` og `database-password`.
+- **Hemmeligheter** leses av appene selv fra Key Vault ved oppstart (plattformens Key Vault-referanser løses ikke mot dette hvelvet, som API-ene og admin-appen
+  også har funnet), med `Key Vault Secrets User` på den ene hemmeligheten (ikke hvelvet): Studio leser `studio-api-key` og `studio-session-secret`, API-et leser
+  `studio-api-key` og `database-password`. Bicep gir appen bare `KEY_VAULT_URI` og `KEY_VAULT_MAP`, som ikke er hemmelige.
 - Fremgangsmåte, rekkefølge, DNS, rollback og åpne punkter: [docs/studio-and-onboarding-api.md](docs/studio-and-onboarding-api.md); utrullingen trinn for trinn med kommandoer: [docs/studio-rollout-checklist.md](docs/studio-rollout-checklist.md).
 
 ### Static Web App
