@@ -4,7 +4,8 @@ Gjelder `https://studio.invi.lol` (repo `CetchApp/invi-studio`) og onboarding-AP
 sannhet for alt i Azure. Denne siden er veiledningen rundt de fem utrullingene som er lagt til i
 [`Infrastructure/safety/manifest.json`](../Infrastructure/safety/manifest.json); mekanismen bak (gaten) står i
 [`deploy-safety-gate.md`](deploy-safety-gate.md), og den generelle sjekklisten (sikkerhetskopi, etterkontroll) i
-[`deploy-runbook.md`](deploy-runbook.md). Tilstanden under er lest fra Azure og GitHub 2026-10-16; les den på nytt før du handler.
+[`deploy-runbook.md`](deploy-runbook.md). Selve utrullingen, trinn for trinn med kommandoer, forventet resultat, stoppkriterium og tilbakerulling, står i
+[`studio-rollout-checklist.md`](studio-rollout-checklist.md). Tilstanden under er lest fra Azure og GitHub 2026-10-16; les den på nytt før du handler.
 
 ## 1. Arkitektur og valg
 

@@ -71,7 +71,7 @@ Produksjonsmiljøet består av følgende komponenter:
   federated credential for GitHub-miljøet `production` i appens eget repo (OIDC, ingen hemmelighet). Ingen ny plan, ingen ny database.
 - **Hemmeligheter** er Key Vault-referanser med `Key Vault Secrets User` på den ene hemmeligheten (ikke hvelvet): Studio leser `studio-api-key` og
   `studio-session-secret`, API-et leser `studio-api-key` og `database-password`.
-- Fremgangsmåte, rekkefølge, DNS, rollback og åpne punkter: [docs/studio-and-onboarding-api.md](docs/studio-and-onboarding-api.md).
+- Fremgangsmåte, rekkefølge, DNS, rollback og åpne punkter: [docs/studio-and-onboarding-api.md](docs/studio-and-onboarding-api.md); utrullingen trinn for trinn med kommandoer: [docs/studio-rollout-checklist.md](docs/studio-rollout-checklist.md).
 
 ### Static Web App
 - **Navn**: `swa-invi-web-prod-001`
@@ -148,6 +148,7 @@ Infrastructure/
     └── gate/                   # Analysemotor, oppsamler, skrubbere og tester for gaten
 docs/
 ├── studio-and-onboarding-api.md  # Studio og onboarding-API: arkitektur, rekkefølge, hemmeligheter, DNS, rollback
+├── studio-rollout-checklist.md   # Studio og onboarding-API: sjekkliste med kommandoer, forventet resultat, stoppkriterier og rollback per trinn
 ├── deploy-safety-gate.md       # Hva gaten kontrollerer og ikke kan kontrollere
 ├── deploy-runbook.md           # Utrulling og rollback, steg for steg
 └── iac-avstemming.md           # Avstemming av Bicep mot produksjon
