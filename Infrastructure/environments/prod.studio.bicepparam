@@ -19,10 +19,14 @@ using '../modules/webapp.bicep'
 //
 // Not set on purpose, until each has a Key Vault secret and a role on it (add the name to settingSecretNames here and to
 // studio-platform-rbac in the same change): GOOGLE_PLACES_API_KEY and OPENAI_API_KEY (sign-up look-up and profile text, both optional),
-// STRIPE_SECRET_KEY (billing). STRIPE_PRICE_ID, STRIPE_MERCH_PRICE_ID and STUDIO_BILLING_EXEMPT are not secret and go in appSettings. Studio
-// runs without them; each feature stays off or degrades. Billing is off until STRIPE_SECRET_KEY and a plan's price are both set, and while it
-// is off the plans are free (booking resources and club merch can be added and published without paying). STUDIO_BILLING_PREVIEW is a
-// development switch that does nothing in production and must not be set here.
+// STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET (payment). STRIPE_PRICE_ID and STRIPE_MERCH_PRICE_ID are not secret and go in appSettings once Karl has
+// created the prices in Stripe (nobody else invents them). Studio runs without them; each feature stays off or degrades.
+//
+// PAYMENT THAT IS NOT SET UP IS CLOSED, NOT FREE. STUDIO_ENVIRONMENT=production (a site on Azure is production anyway) makes Studio refuse to publish
+// what is paid for (merch put out for the Invi app, resources switched on for booking) for every organizer that has no exemption in the database
+// (StudioBillingExemption, given by hand to early customers, one organizer at a time). Preparing content stays free. STUDIO_BILLING_PREVIEW,
+// STUDIO_BILLING_EXEMPT and STRIPE_API_BASE are for development and the test service: they are ignored on Azure and must not be set here (a test checks).
+// How payment works and how to open it: docs/studio-rollout-checklist.md and the Studio repository's docs/billing.md.
 
 param workloadName = 'invi'
 param environment = 'prod'
@@ -58,6 +62,10 @@ param appSettings = {
 
   // Must have the same value as in the onboarding API (prod.onboardingapi.bicepparam).
   STUDIO_REQUIRE_EMAIL: 'false'
+
+  // A customer-facing deployment: no test checkout, no "everybody is free", payment that is not open is closed (see above). Azure is production without
+  // this too; it is written down so that nobody has to know that.
+  STUDIO_ENVIRONMENT: 'production'
 }
 
 // environment variable name -> Key Vault secret name, read by launch.mjs when Studio starts (KEY_VAULT_URI and KEY_VAULT_MAP are generated from this;

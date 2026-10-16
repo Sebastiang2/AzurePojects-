@@ -24,8 +24,8 @@ using '../modules/webapp.bicep'
 // /api/health need the Studio key, and ADMIN_ROUTES_ENABLED=false makes /api/admin/* answer 404. If STUDIO_API_KEY could not be loaded the API
 // answers 503, never "open".
 //
-// Not set on purpose: OPENAI_API_KEY, MAILBOX_*, RESEND_API_KEY and STUDIO_EMAIL_FROM (admin and e-mail features that stay off), and
-// RESERVATION_* automation. The settings bag is replaced as a whole by every deployment: add a setting here, never in the portal.
+// Not set on purpose: OPENAI_API_KEY, MAILBOX_*, RESEND_API_KEY and STUDIO_EMAIL_FROM (admin and e-mail features that stay off), the old ACTIVITY_CREATOR_ID
+// name, and RESERVATION_* automation. The settings bag is replaced as a whole by every deployment: add a setting here, never in the portal.
 
 param workloadName = 'invi'
 param environment = 'prod'
@@ -40,6 +40,13 @@ param tags = {
 }
 
 param appKey = 'onboarding-api'
+
+// ADMIN_ACTIVITY_CREATOR_ID: the system user (UserTable.UserId) that every activity the API creates is attributed to (CreatorId; the owner is always the
+// organizer, OrganizerId). 0 = NOT SET, and that is what stays until the id is confirmed: a locked-down API then refuses to create activities (503), it never
+// falls back to a guessed user (657 is the TEST database's creator). Do not put a number here until a person has checked it in the production database
+// (Migrations/preflight-readonly.sql, statement 7, in the onboarding API repository: the user exists, has no password, is no administrator, no e-mail, no
+// activities of its own) and Karl has confirmed it. It must be the same user as dataApiActivityCreatorId in prod.bicepparam.
+param activityCreatorId = 0
 
 // The same runtime as the Data API and the Auth API. The API targets net10.0 (.NET 8 leaves support on 2026-11-10).
 param linuxFxVersion = 'DOTNETCORE|10.0'

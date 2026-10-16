@@ -49,6 +49,10 @@ param appSettings object
 @description('Secrets the app reads from Key Vault at start-up, as environment variable name -> Key Vault secret name. They are not App Settings: the app loads them itself with its managed identity (KEY_VAULT_URI and KEY_VAULT_MAP), because App Service Key Vault references do not resolve against this vault. The identity needs a role on each named secret (studio-platform-rbac.bicep)')
 param settingSecretNames object = {}
 
+@description('The user (UserTable.UserId) that owns the activities this app creates, as the app setting ADMIN_ACTIVITY_CREATOR_ID (the onboarding API; Studio does not use it). 0 = not set: a locked-down API then REFUSES to create activities (503); there is no fallback to a guessed user. Set it only to an id that has been checked in the production database (docs/studio-rollout-checklist.md, step 8), and set the same user on the Data API (dataApiActivityCreatorId in main.bicep): one system user per database owns both.')
+@minValue(0)
+param activityCreatorId int = 0
+
 @description('Value of SCM_DO_BUILD_DURING_DEPLOYMENT. The pipeline builds, the platform must not build on the shared instance')
 param scmDoBuildDuringDeployment string = 'false'
 
@@ -204,6 +208,7 @@ resource siteSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   properties: union(
     appSettings,
     secretLoading,
+    activityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(activityCreatorId) } : {},
     {
       APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
       ApplicationInsightsAgent_EXTENSION_VERSION: '~3'

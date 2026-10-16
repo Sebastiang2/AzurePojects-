@@ -28,9 +28,9 @@ nettleser ──https──► studio.invi.lol ──► app-invi-studio-prod-00
 | Ingen `healthCheckPath` på plattformen | Planen har én instans som deles med API-ene. Helsesjekk kan få instansen byttet ut under dem (se `adminapp.bicep`). Appene har egne helseruter: API-et `/api/health`, Studio `/api/health` og `/api/health?deep=1`. |
 | Deploy bare manuelt, fra `main`, i miljøet `production` | Uprøvd kode skal ikke rulles ut av en push. Workflowene bygger og tester ved hver push og PR, men deployer bare ved «Run workflow» med «Deploy» avkrysset. |
 
-Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Data API-et oppretter Studio-tabellene for reservasjoner selv ved oppstart (`OrganizerReservationSchema`). Onboarding-API-et oppretter to egne tabeller
-ved oppstart hvis de mangler, `OrganizerMerch` og `OrganizerTicketSale` (`StudioTablesStartup`, `CREATE TABLE IF NOT EXISTS`, bare nye tabeller): **første oppstart i produksjon legger altså to nye tabeller til i `invi`**,
-og en tilbakerulling av appen lar dem stå (tilbakerullings-SQL ligger i `Migrations/` i API-repoet). Får databasebrukeren ikke lov, logges det og API-et starter likevel; merch og billettsalg svarer da 503.
+Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Data API-et oppretter Studio-tabellene for reservasjoner selv ved oppstart (`OrganizerReservationSchema`). Onboarding-API-et oppretter tre egne tabeller
+ved oppstart hvis de mangler, `OrganizerMerch`, `OrganizerTicketSale` og `StudioBillingExemption` (fritak for tidlige kunder) (`StudioTablesStartup`, `CREATE TABLE IF NOT EXISTS`, bare nye tabeller, ingen endring av eksisterende): **første oppstart i produksjon legger altså tre nye tabeller til i `invi`**,
+og en tilbakerulling av appen lar dem stå (tilbakerullings-SQL ligger i `Migrations/` i API-repoet). Hver skriving API-et gjør av seg selv, migreringene, forhåndssjekken, backup og rollback står i `docs/launch-database.md` i API-repoet. Får databasebrukeren ikke lov, logges det og API-et starter likevel; merch og billettsalg svarer da 503.
 
 **«Koblet mot Data API»** betyr databasen og admin-panelet, ikke et HTTP-kall: Studio kaller aldri Data API-et (ingen kode i `invi-studio` gjør det, og ingen CORS-endring
 trengs: Studio kaller fra serveren, og Data API-et tillater uansett alle origins uten credentials). Admin-appen kaller Data API-ets admin-ruter
@@ -101,6 +101,10 @@ az keyvault secret set --vault-name kv-invi-prod-001 --name studio-session-secre
 Rotasjon: sett en ny versjon av hemmeligheten og start API-et, deretter Studio, på nytt (appene leser siste versjon ved oppstart og leser ikke på nytt mens de kjører).
 Ny `studio-session-secret` logger ut alle. Valgfrie nøkler som ikke er satt (Google Places, OpenAI, Stripe, Resend) legges til ved å føre navnet inn i
 `settingSecretNames` i `prod.studio.bicepparam` og i `prod.studio-platform-rbac.bicepparam` i samme PR; ikke-hemmelige verdier (for eksempel `STRIPE_PRICE_ID`) går i `appSettings`.
+
+**Betaling er stengt, ikke gratis.** Uten Stripe (ingen `STRIPE_SECRET_KEY` og pris) kan ingen betale på Azure, og Studio nekter da å publisere det som er betalt for (merch lagt ut, bookingressurs slått på) for alle utenom arrangører med fritak i databasen (`StudioBillingExemption`, gitt for hånd, én arrangør om gangen, kan trekkes tilbake).
+Å forberede innhold er gratis. `STUDIO_ENVIRONMENT=production` står i `prod.studio.bicepparam`; `STUDIO_BILLING_PREVIEW`, `STUDIO_BILLING_EXEMPT` og `STRIPE_API_BASE` er for utvikling og test-tjenesten, de gjør ingenting på Azure og skal ikke settes der (en test sjekker det). Prisene lager bare Karl.
+Reglene, kodepunktene og testene: `docs/billing.md` i Studio-repoet.
 
 ## 5. Rolletildelinger i manifestet
 
@@ -183,7 +187,7 @@ Sertifikatet er et gratis, selvfornyende App Service-sertifikat og krever at CNA
 
 ```bash
 curl -sS https://studio.invi.lol/api/health                      # {"status":"ok"}
-curl -sS "https://studio.invi.lol/api/health?deep=1"             # {"status":"ok"}: nøkkel, API, database og VenueType virker. 503 med problem: not-configured (hemmelighet ikke lastet), api-unreachable, api-refused, database eller schema (VenueType/kolonne mangler, §11)
+curl -sS "https://studio.invi.lol/api/health?deep=1"             # {"status":"ok"}: nøkkel, API, database og VenueType virker. 503 med problem: not-configured (hemmelighet ikke lastet), api-unreachable, api-refused, database, schema (VenueType, en annen tabell eller en kolonne mangler, §11; `readiness:`-linjen i API-loggen sier hvilken) eller activity-creator (ingen brukbar `ADMIN_ACTIVITY_CREATOR_ID`)
 curl -sS -o /dev/null -w '%{http_code}\n' https://studio.invi.lol/organization/login          # 200
 curl -sS -o /dev/null -w '%{http_code}\n' https://app-invi-onboarding-api-prod-001.azurewebsites.net/api/organizers/1   # 401 (aldri 200)
 curl -sS -o /dev/null -w '%{http_code}\n' https://app-invi-onboarding-api-prod-001.azurewebsites.net/api/admin/organizers # 404
@@ -220,10 +224,12 @@ fra produksjonsloggene til Data API-et (Log Analytics, 30 dager, lest 2026-10-16
   så ett kall etter utrulling avgjør det (§9).
 * `OrganizersTable`: API-et bruker ti kolonner som Data API-et ikke bruker og som loggene derfor ikke beviser: `OrganizerSlug`, `GeoJson`, `GeometryType`, `TapTargetGeoJson`, `RecurrenceNote`, `LastCheckedAt`, `CreatedAt`, `UpdatedAt`, `CancellationNoticeMinutes` og
   `ReservationApprovalMinutes` (de to siste hører til Studios reservasjoner).
-* **Skaperen av aktiviteter.** Aktiviteter som Studio publiserer eies av brukeren i `ADMIN_ACTIVITY_CREATOR_ID` (samme innstilling som Data API-et), og er den ikke satt, av bruker 657, testdatabasens skaper.
-  Hverken denne appen eller produksjonens Data API har innstillingen satt i dag, så 657 gjelder; finnes ikke den brukeren i `UserTable`, feiler opprettelse av aktiviteter (kalender, kamper). Velg en systembruker i produksjon og sett
-  `ADMIN_ACTIVITY_CREATOR_ID` i `appSettings` i `prod.onboardingapi.bicepparam` (og for Data API-et i `prod.bicepparam`) i en egen endring; en beslutning for teamet, ikke noe denne utrullingen gjør.
-* `OrganizerMerch` og `OrganizerTicketSale` opprettes av onboarding-API-et selv ved oppstart (se §1); uten dem svarer merch og billettsalg 503, og resten av Studio virker. Appen leser merch fra Data API-et, og `main` der har ingen merch-kode ennå.
+* **Skaperen av aktiviteter** (`CreatorId`; eieren er alltid arrangøren, `OrganizerId`). Aktiviteter som Studio publiserer får `CreatorId` fra `ADMIN_ACTIVITY_CREATOR_ID` (samme innstilling som Data API-et: én systembruker per database). **API-et i produksjon har ingen reserve:**
+  uten innstillingen (eller med en ID som ikke finnes i `UserTable`) skrives ingenting og Studio får 503; 657 er testdatabasens skaper og brukes bare der API-et ikke er låst ned (`STUDIO_SERVER_ONLY` ikke satt). Hverken denne appen eller produksjonens Data API har innstillingen satt i dag
+  (lest fra Azure 2026-10-16). Systembrukeren velges av Karl (D2 i sjekklisten), kontrolleres i produksjonsdatabasen (`Migrations/preflight-readonly.sql`, setning 7) og settes i Bicep med `activityCreatorId` i `prod.onboardingapi.bicepparam` og `dataApiActivityCreatorId` i `prod.bicepparam` (begge 0 = ikke satt, til den er bekreftet).
+* **`ActivityTable` mangler sannsynligvis fire kolonner** (`Recurring`, `RecurrenceFrequency`, `RecurrenceInterval`, `RecurrenceUntil`): API-et skriver og leser dem for hver aktivitet, men Data API-et på `main` lager dem ikke (det gjør bare `staging`, ikke sluppet), og Data API-ets entitet kartlegger dem ikke, så loggene kan ikke bevise at de finnes.
+  Uten dem feiler opprettelse, redigering og hele kalenderen. Rettes av en eksplisitt, additiv og umiddelbar migrering (`Migrations/20261018_02_activity_recurrence.sql`, `ALGORITHM=INSTANT`); API-et gjør aldri ALTER selv. API-ets egen kontroll (`readiness:` i loggen, `/api/studio/readiness`, dyp helsesjekk `schema`) sier nøyaktig hva som mangler.
+* `OrganizerMerch`, `OrganizerTicketSale` og `StudioBillingExemption` opprettes av onboarding-API-et selv ved oppstart (se §1); uten dem svarer merch, billettsalg og fritak 503 (fritak betyr da «ingen er fritatt»), og resten av Studio virker. Appen leser merch fra Data API-et, og `main` der har ingen merch-kode ennå.
 
 Skrivebeskyttet kontroll fra en vert med nettverksvei til MySQL:
 
@@ -234,11 +240,13 @@ SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' A
 -- Skal gi 10 rader (OrganizersTable-kolonner API-et bruker og loggene ikke beviser)
 SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' AND table_name = 'OrganizersTable' AND column_name IN (
   'OrganizerSlug','GeoJson','GeometryType','TapTargetGeoJson','RecurrenceNote','LastCheckedAt','CreatedAt','UpdatedAt','CancellationNoticeMinutes','ReservationApprovalMinutes');
--- Skal gi 1: skaperen av aktiviteter (657 til ADMIN_ACTIVITY_CREATOR_ID er satt)
-SELECT COUNT(*) FROM UserTable WHERE UserId = 657;
--- Skal gi 2 etter første oppstart av API-et (0 før); bare nye tabeller
-SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'invi' AND table_name IN ('OrganizerMerch','OrganizerTicketSale');
+-- Skal gi 1: skaperen av aktiviteter (den kandidaten som skal bli ADMIN_ACTIVITY_CREATOR_ID; aldri 657 uten at den er sjekket her)
+SELECT COUNT(*) FROM UserTable WHERE UserId = <KANDIDAT>;
+-- Skal gi 3 etter første oppstart av API-et (0 før); bare nye tabeller
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'invi' AND table_name IN ('OrganizerMerch','OrganizerTicketSale','StudioBillingExemption');
 ```
+
+Hele kontrollen, med mer (manglende tabeller og kolonner i ett, `OrganizerId`-typen, brukerens egenskaper, arrangører uten aktiviteter, foreldreløse aktiviteter) ligger ferdig som `Migrations/preflight-readonly.sql` i API-repoet, og API-et kjører den samme kontrollen selv ved oppstart.
 
 Mangler kolonnene i `VenueType`, er det en egen, godkjent databaseendring (additiv, nullbare kolonner, for eksempel `ALTER TABLE VenueType ADD COLUMN Description VARCHAR(500) NULL`; API-et leser dem med `COALESCE`), ikke noe denne utrullingen gjør. `ReservationNotificationOutbox`
 trengs ikke så lenge `RESERVATION_NOTIFICATIONS_MODE=Disabled`. En bakgrunnsjobb i API-et setter `IsEnded=1` på utløpte arrangør-aktiviteter hvert minutt (kolonnen `OrganizerId` finnes, bevist over).
@@ -257,6 +265,8 @@ Ingen eksisterende ressurs er endret, så å rulle tilbake er å fjerne det nye.
 ## 13. Åpne punkter
 
 - Hemmelighetene i §4 er ikke opprettet (krever et menneske med tilgang til det private hvelvet).
+- Beslutningene D1-D10 i `studio-rollout-checklist.md` (klubber uten kamper på kartet, aktivitetsskaperen, Stripe søndag, bookingprisen, listen over tidlige kunder …) mangler svar fra Karl.
+- `ActivityTable` mangler sannsynligvis de fire gjentakelseskolonnene (§11): rettes av `20261018_02_activity_recurrence.sql` før API-et startes.
 - Plattformens Key Vault-referanser løses ikke mot hvelvet for appene på planen (§6); årsaken (VnetProxy) er ikke funnet. Appene her er bygget for å klare seg uten dem. Skulle plattformen rettes senere, er det ingen endring å gjøre.
 - Seks av ti kolonner i `VenueType` og noen `OrganizersTable`-kolonner er ikke bevist (§11); mangler de, feiler Studios sider. Den dype helsesjekken viser det som `schema` etter utrulling, og SQL-en i §11 avgjør det før.
 - Eier-trinnene (§3 trinn 4) og GitHub-oppsettet (§7) krever personer med de rettighetene; gaten, miljøreglene og det manuelle utløseren er laget for det.

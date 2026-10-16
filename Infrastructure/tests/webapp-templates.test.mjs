@@ -7,7 +7,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,4 +194,46 @@ test("domain: pass 1 binds without TLS and creates no certificate, pass 2 adds a
   assert.equal(certificate.name, "studio.invi.lol-app-invi-studio-prod-001");
   assert.equal(certificate.properties.canonicalName, "studio.invi.lol");
   assert.equal(one(tls, "Microsoft.Web/sites/hostNameBindings").properties.sslState, "SniEnabled");
+});
+
+// ── The activity creator (ADMIN_ACTIVITY_CREATOR_ID) and the payment switches ───────────────────────────────────────────────────────────────────
+const PLACEHOLDERS = { MYSQL_ADMIN_PASSWORD: "x", REVENUECAT_SECRET_API_KEY: "x", REVENUECAT_WEBHOOK_AUTHORIZATION: "x", ADMIN_ENTRA_CLIENT_SECRET: "x" };
+const paramNumber = (file, name) => Number(new RegExp(`^param ${name} = (\\d+)\\s*$`, "m").exec(readFileSync(join(here, "..", "environments", file), "utf8"))?.[1]);
+const withParam = (file, name, value) => {
+  const copy = file.replace(".bicepparam", `.${name}-test.bicepparam`);
+  const text = readFileSync(join(here, "..", "environments", file), "utf8");
+  writeFileSync(join(work, "Infrastructure", "environments", copy), text.replace(new RegExp(`^param ${name} = \\d+\\s*$`, "m"), `param ${name} = ${value}`));
+  return copy;
+};
+const dataApiSettings = (file) => ofType(snapshot(file, PLACEHOLDERS), "Microsoft.Web/sites/config").find((r) => r.name.startsWith("app-invi-data-api-prod-001/")).properties;
+
+test("onboarding API: ADMIN_ACTIVITY_CREATOR_ID follows activityCreatorId: absent while it is 0, exactly that number once it is given, and never a guess", { skip: !haveBicep }, () => {
+  const declared = paramNumber("prod.onboardingapi.bicepparam", "activityCreatorId");
+  assert.ok(Number.isInteger(declared) && declared >= 0, "activityCreatorId is declared as a whole number");
+  const live = one(snapshot("prod.onboardingapi.bicepparam"), "Microsoft.Web/sites/config").properties;
+  assert.equal(live.ADMIN_ACTIVITY_CREATOR_ID, declared > 0 ? String(declared) : undefined, "the setting is there exactly when an id has been given");
+  assert.equal(live.ACTIVITY_CREATOR_ID, undefined, "the older name is not used in production");
+  const given = one(snapshot(withParam("prod.onboardingapi.bicepparam", "activityCreatorId", 4242)), "Microsoft.Web/sites/config").properties;
+  assert.equal(given.ADMIN_ACTIVITY_CREATOR_ID, "4242", "a given id becomes the app setting");
+  assert.ok(!looksSecret("ADMIN_ACTIVITY_CREATOR_ID", "4242"), "the safety gate does not take the id for a secret");
+});
+
+test("Data API: ADMIN_ACTIVITY_CREATOR_ID follows dataApiActivityCreatorId, and while it is 0 the Data API's settings are exactly what they were", { skip: !haveBicep }, () => {
+  const declared = paramNumber("prod.bicepparam", "dataApiActivityCreatorId");
+  assert.ok(Number.isInteger(declared) && declared >= 0, "dataApiActivityCreatorId is declared as a whole number");
+  const live = dataApiSettings("prod.bicepparam");
+  assert.equal(Object.keys(live).length, 42, "the Data API still has the 42 settings it has in production (nothing added while the id is not given)");
+  assert.equal(live.ADMIN_ACTIVITY_CREATOR_ID, declared > 0 ? String(declared) : undefined);
+  const given = dataApiSettings(withParam("prod.bicepparam", "dataApiActivityCreatorId", 4242));
+  assert.equal(given.ADMIN_ACTIVITY_CREATOR_ID, "4242");
+  assert.equal(Object.keys(given).length, 43, "a given id adds exactly that one setting");
+  assert.equal(paramNumber("prod.bicepparam", "dataApiActivityCreatorId"), paramNumber("prod.onboardingapi.bicepparam", "activityCreatorId"), "one system user per database: both APIs name the same user (both 0 until it is confirmed)");
+});
+
+test("Studio is a customer-facing deployment: payment that is not set up is closed, and no test switch is set", { skip: !haveBicep }, () => {
+  const studio = one(snapshot("prod.studio.bicepparam"), "Microsoft.Web/sites/config").properties;
+  assert.equal(studio.STUDIO_ENVIRONMENT, "production");
+  for (const absent of ["STUDIO_BILLING_PREVIEW", "STUDIO_BILLING_EXEMPT", "STRIPE_API_BASE", "STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"]) assert.equal(studio[absent], undefined, `${absent} is not an App Setting on Studio`);
+  // The prices go in appSettings only when Karl has made them: none is invented here.
+  for (const price of ["STRIPE_PRICE_ID", "STRIPE_MERCH_PRICE_ID"]) assert.ok(studio[price] === undefined || /^price_[A-Za-z0-9]+$/.test(String(studio[price])), `${price} is a Stripe price id or absent`);
 });
