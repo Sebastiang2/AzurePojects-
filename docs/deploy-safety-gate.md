@@ -25,7 +25,8 @@ bash Infrastructure/scripts/verify-secure-parameters.sh --deployment main
 Fremgangsmåten rundt (sikkerhetskopi, etterkontroll, rollback) står i [`deploy-runbook.md`](deploy-runbook.md).
 
 Nøkler (`--deployment`) står i `Infrastructure/safety/manifest.json`: `main`, `adminapp-a`, `adminapp-b-rbac`,
-`adminapp-c-domain`, `swa-web`, `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol`.
+`adminapp-c-domain`, `swa-web`, `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol`, og for Studio og onboarding-API-et
+`onboardingapi`, `studio`, `studio-platform-rbac`, `studio-domain`, `studio-domain-tls` (se [`studio-and-onboarding-api.md`](studio-and-onboarding-api.md)).
 
 `preflight.sh` bruker `--allow-dirty` for lokal gjennomgang av uforpliktede endringer. En rapport fra den kan ikke brukes til
 utrulling: `deploy.sh` kjører sin egen gate og krever ren arbeidskopi på `origin/main`.
@@ -73,6 +74,26 @@ Gaten stoler ikke på ett signal alene:
 
 Nested objekter (app settings-bag, `securityRules`, `subnets`) erstattes som helhet også i Incremental-modus. Derfor sammenlignes
 de element for element mot live, uavhengig av hva what-if rapporterer.
+
+## Utrulling som oppretter en ny app
+
+Studio og onboarding-API-et var de første utrullingene som *oppretter* en App Service. Gaten håndterer det slik:
+
+* **Ingen live-lesing av det som ikke finnes.** `collect-live.sh` leser bare apper som står i ressurslisten. En app som mangler får ingen kall (og dermed ingen
+  feilede kall); bare en ressursliste som er lest og tolket kan si at en app mangler, en liste som ikke kunne leses stopper gaten som før (`EVIDENCE-CALL`).
+  Selve opprettelsen vurderes av what-if-reglene og manifestet (`WHATIF-CREATE`, `touches`, `allowedCreates`), ikke av live-lesingen.
+* **Innstillingene til en ny app vurderes likevel**, fordi opprettelse er da det teller: `BAG-REQUIRED-MISSING`, `BAG-INVARIANT`, `BAG-SECURE-FEED-*` og
+  `BAG-SECRET-LITERAL` kjøres mot den ønskede innstillingsbagen (`BAG-NEW-SITE` er informasjon).
+* **`apps.<app>.introducedBy`** i manifestet: en app som legges til i manifestet før den er opprettet stopper ikke andre utrullinger. `deploy.sh` krever bare at
+  den er `Running` når utrullingen som innfører den kjøres, eller når den finnes (`gate/apps-to-verify.mjs`; en liste over nettsteder som ikke kan leses fritar ingen).
+  Fjern feltet når appen er opprettet.
+* **TLS som eget, godkjent trinn.** Å bytte en bundet host name fra `Disabled` til `SniEnabled` er `BINDING-SSL-CHANGE`, som stopper med mindre manifestet har en
+  `allowedChanges`-oppføring med `resource` `<app>/<host>`, `property` `sslState` og eksakt `before`/`after`.
+* **Deploy-identiteten til en app er en bruker-tildelt identitet.** Navnet på rolletildelingen forutsies fra identitetens `principalId` i live-listen
+  (`reference('.../userAssignedIdentities/<navn>')`), akkurat som for en apps egen identitet. Finnes ikke identiteten ennå, er tildelingen `RBAC-UNVERIFIABLE`
+  og stopper: rekkefølgen (appene først, så rollene) håndheves av gaten.
+
+Tester: `scripts/gate/tests/new-app.test.mjs` (16) og `Infrastructure/tests/webapp-templates.test.mjs` (12, evaluerer de ekte Bicep-filene offline).
 
 ## MySQL-serveren og administratorpassordet
 

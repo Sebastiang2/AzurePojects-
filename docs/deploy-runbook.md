@@ -4,6 +4,9 @@ Gjelder utrulling `main` (`Infrastructure/main.bicep` + `environments/prod.bicep
 Service-planen, Data API, Auth API og rolletildelingene til de to API-ene. Admin App, Static Web Apps og domenene er egne
 utrullinger (`adminapp-a`, `adminapp-b-rbac`, `adminapp-c-domain`, `swa-*`) og er **ikke** med i `main`; se «Admin App» nederst.
 
+Studio (`studio.invi.lol`) og onboarding-API-et har egne utrullinger (`onboardingapi`, `studio`, `studio-platform-rbac`, `studio-domain`, `studio-domain-tls`) og en
+egen veiledning: [`studio-and-onboarding-api.md`](studio-and-onboarding-api.md).
+
 Mekanismen bak (gaten, manifestet, hva den ikke kan sjekke) står i [`deploy-safety-gate.md`](deploy-safety-gate.md). Denne
 siden er sjekklisten rundt den. Hvert trinn som endrer produksjon krever egen, skriftlig godkjenning; trinn merket
 **(skriver)** endrer Azure, alt annet er read-only.
