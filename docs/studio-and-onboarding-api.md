@@ -27,8 +27,14 @@ nettleser ──https──► studio.invi.lol ──► app-invi-studio-prod-00
 | Ingen `healthCheckPath` på plattformen | Planen har én instans som deles med API-ene. Helsesjekk kan få instansen byttet ut under dem (se `adminapp.bicep`). Appene har egne helseruter: API-et `/api/health`, Studio `/api/health` og `/api/health?deep=1`. |
 | Deploy bare manuelt, fra `main`, i miljøet `production` | Uprøvd kode skal ikke rulles ut av en push. Workflowene bygger og tester ved hver push og PR, men deployer bare ved «Run workflow» med «Deploy» avkrysset. |
 
-Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Studio har ingen kall mot Data API-et; Data API-et oppretter Studio-tabellene selv
-ved oppstart (`OrganizerReservationSchema`). Onboarding-API-et kjører ingen migreringer.
+Datakilden er MySQL-databasen `invi`, den samme som Data API-et bruker. Onboarding-API-et kjører ingen migreringer; Data API-et oppretter Studio-tabellene selv
+ved oppstart (`OrganizerReservationSchema`).
+
+**«Koblet mot Data API»** betyr databasen og admin-panelet, ikke et HTTP-kall: Studio kaller aldri Data API-et (ingen kode i `invi-studio` gjør det, og ingen CORS-endring
+trengs: Studio kaller fra serveren, og Data API-et tillater uansett alle origins uten credentials). Admin-appen kaller Data API-ets admin-ruter
+(`/api/v1/admin/publishing/...`: `organizers/import`, `organizers/{id}/account/login` som utsteder Studio-innlogging med et engangs startpassord, og
+`account/disable`), og de skriver arrangørene og kontoene (`OrganizersTable`, `OrganizerAccountTable`) som onboarding-API-et leser for Studio. Selvregistrerte
+arrangører opprettes skjult (`IsActive=false`) og aktiveres i admin-panelet.
 
 ## 2. Ressurser
 
