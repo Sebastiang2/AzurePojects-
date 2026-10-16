@@ -133,7 +133,17 @@ admin-appen gjør. Til da gir koden 503 («ikke konfigurert») i stedet for å g
 For hvert av `CetchApp/invi-studio` og `CetchApp/cetchapp-onboarding-api`: repository-variablene `AZURE_CLIENT_ID` (klient-ID-en til appens deploy-identitet:
 `az identity show -g rg-invi-prod-swc-001 -n id-gha-invi-<app>-prod-001 --query clientId -o tsv`), `AZURE_TENANT_ID` og `AZURE_SUBSCRIPTION_ID`; miljøet `production`
 med påkrevd godkjenner og «Deployment branches: main»; og grenbeskyttelse på `main` (PR og grønn bygging). Ingen av dem er hemmeligheter. Workflowen hopper over
-deploy til variablene finnes.
+deploy til variablene finnes. Opprett miljøet og legg inn godkjennerne *før* første kjøring: et miljø som ikke finnes opprettes av GitHub uten beskyttelse ved første bruk.
+
+```bash
+# etter at deploy-identitetene finnes (utføres av en administrator; verdiene er ikke hemmeligheter)
+for pair in "invi-studio:studio" "cetchapp-onboarding-api:onboarding-api"; do
+  repo="${pair%%:*}"; app="${pair##*:}"
+  gh variable set AZURE_CLIENT_ID       --repo "CetchApp/$repo" --body "$(az identity show -g rg-invi-prod-swc-001 -n "id-gha-invi-$app-prod-001" --query clientId -o tsv)"
+  gh variable set AZURE_TENANT_ID       --repo "CetchApp/$repo" --body "$(az account show --query tenantId -o tsv)"
+  gh variable set AZURE_SUBSCRIPTION_ID --repo "CetchApp/$repo" --body "$(az account show --query id -o tsv)"
+done
+```
 
 ## 8. DNS hos Namecheap (`invi.lol`)
 
