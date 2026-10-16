@@ -22,8 +22,8 @@ nettleser ──https──► studio.invi.lol ──► app-invi-studio-prod-00
 | Begge som App Service på `asp-invi-prod-001` | Studio er en Node-server (server-rendrede sider, route handlers, `proxy.ts`); Static Web Apps (hybrid Next.js) er uegnet. Planen har VNet-integrasjon mot den private MySQL-serveren og det private hvelvet; en annen plan trenger eget, delegert subnett. Samme mønster som admin-appen. |
 | Ett generisk modul (`webapp.bicep`) og egne parameterfiler | Appene deler 95 % (site-herding, VNet, diagnostikk). Hver app er en egen utrulling i manifestet, så en feil i den ene ikke stopper den andre, og ingen av dem kan røre API-ene. `adminapp.bicep` er ikke endret. |
 | Onboarding-API uten eget domene | Bare Studio-serveren kaller det. Færre bevegelige deler (ingen DNS, ingen sertifikat). Et eget domene kan legges til senere. |
-| Låsing i kode, ikke i nettverket | API-et kalles bare av Studio-serveren. I produksjon krever koden Studio-nøkkelen på alle ruter unntatt `/api/health` (`STUDIO_SERVER_ONLY=true`), `/api/admin/*` er slått av (`ADMIN_ROUTES_ENABLED=false`), og en Key Vault-referanse som ikke ble løst (offentlig tekst) godtas aldri som nøkkel. Begrunnelsen står i API-repoet. Et privat endepunkt (som Auth API-et har planlagt) er et bedre neste steg, ikke et krav. |
-| Hemmeligheter som Key Vault-referanser med rolle på én hemmelighet | Samme mekanisme som admin-appen (`DATA_API_ADMIN_KEY_TEST`: status Resolved). Ingen hemmelighet i Git, i parameterfilene eller i GitHub. |
+| Låsing i kode, ikke i nettverket | API-et kalles bare av Studio-serveren. I produksjon krever koden Studio-nøkkelen på alle ruter unntatt `/api/health` (`STUDIO_SERVER_ONLY=true`), `/api/admin/*` er slått av (`ADMIN_ROUTES_ENABLED=false`), og teksten til en Key Vault-referanse som ikke ble løst (offentlig tekst) godtas aldri som nøkkel. Begrunnelsen står i API-repoet. Et privat endepunkt (som Auth API-et har planlagt) er et bedre neste steg, ikke et krav. |
+| Appene leser hemmelighetene selv fra Key Vault ved oppstart, med rolle på én hemmelighet (ikke plattformens Key Vault-referanser) | Plattformens referanser løses ikke mot `kv-invi-prod-001` for appene på denne planen (bevis og detaljer i §6); Data API, Auth API og admin-appen leser derfor selv, og det gjør disse også. Bicep gir appen `KEY_VAULT_URI` og `KEY_VAULT_MAP`, ingen hemmelighet. Ingen hemmelighet i Git, i parameterfilene eller i GitHub. |
 | Ingen `healthCheckPath` på plattformen | Planen har én instans som deles med API-ene. Helsesjekk kan få instansen byttet ut under dem (se `adminapp.bicep`). Appene har egne helseruter: API-et `/api/health`, Studio `/api/health` og `/api/health?deep=1`. |
 | Deploy bare manuelt, fra `main`, i miljøet `production` | Uprøvd kode skal ikke rulles ut av en push. Workflowene bygger og tester ved hver push og PR, men deployer bare ved «Run workflow» med «Deploy» avkrysset. |
 
@@ -66,7 +66,7 @@ Hvert skrivende trinn går bak gaten (`deploy.sh`, skrevet godkjenning). Ingenti
 | 2 | person med tilgang til det private hvelvet | opprett `studio-api-key` og `studio-session-secret` (§4) | `az keyvault secret show --query "attributes.enabled"` gir `true` (verdien leses aldri) |
 | 3 | team | PR som lister rolletildelingene i manifestet (§5) | `preflight.sh --deployment studio-platform-rbac --allow-dirty` uten `RBAC-NEW`/`RBAC-UNVERIFIABLE` som feil |
 | 4 | Owner | `deploy.sh --deployment studio-platform-rbac` | seks tildelinger finnes; ingen vidtgående rolle |
-| 5 | team | Key Vault-referansene (§6) | begge appers referanser har status `Resolved` |
+| 5 | team | roller på plass og appene startet på nytt (§6) | loggen til begge apper har `key-vault: loaded …` (API-et 2, Studio 2) |
 | 6 | repo-administrator | GitHub-variabler og miljøregler i begge repoene (§7) | |
 | 7 | team | første kodeutrulling: API først, deretter Studio (manuell workflow) | smoke check i workflowen |
 | 8 | person med tilgang til Namecheap | DNS-postene for `studio` (§8) | `dig +short CNAME studio.invi.lol` |
@@ -96,9 +96,9 @@ az keyvault secret set --vault-name kv-invi-prod-001 --name studio-session-secre
 | `studio-session-secret` | Studio (signerer sesjonene; minst 32 tegn) | nei, opprettes |
 | `database-password` | onboarding-API-et (som Data API og Auth API) | ja |
 
-Rotasjon: sett en ny versjon av hemmeligheten og start API-et, deretter Studio, på nytt (referansene peker på siste versjon og leses ved oppstart).
-Ny `studio-session-secret` logger ut alle. Valgfrie nøkler som ikke er satt (Mapbox, Google Places, OpenAI, Stripe, Resend) legges til ved å føre navnet inn i
-`settingSecretNames` i `prod.studio.bicepparam` og i `prod.studio-platform-rbac.bicepparam` i samme PR.
+Rotasjon: sett en ny versjon av hemmeligheten og start API-et, deretter Studio, på nytt (appene leser siste versjon ved oppstart og leser ikke på nytt mens de kjører).
+Ny `studio-session-secret` logger ut alle. Valgfrie nøkler som ikke er satt (Google Places, OpenAI, Stripe, Resend) legges til ved å føre navnet inn i
+`settingSecretNames` i `prod.studio.bicepparam` og i `prod.studio-platform-rbac.bicepparam` i samme PR; ikke-hemmelige verdier (for eksempel `STRIPE_PRICE_ID`) går i `appSettings`.
 
 ## 5. Rolletildelinger i manifestet
 
@@ -114,19 +114,41 @@ Før navnene inn i PR-en: `deployments.studio-platform-rbac.allowedCreates` (`{ 
 `touches` (`{ "type", "name" }`) og `rbac.knownAssignments` (`{ "name", "role", "principalType": "ServicePrincipal", "scope", "description", "status": "declared" }`).
 Uten det stopper gaten alle utrullinger (`RBAC-UNREVIEWED`) etter at tildelingene er laget.
 
-## 6. Bevis at Key Vault-referansene er løst
+## 6. Hemmelighetene: hvordan appene får dem, og hvordan du ser at de er lastet
+
+Appene leser hemmelighetene selv, i containeren, gjennom det private endepunktet, med sin egen administrerte identitet. Bicep setter to innstillinger som ikke er hemmelige:
+`KEY_VAULT_URI` (`https://kv-invi-prod-001.vault.azure.net/`) og `KEY_VAULT_MAP` (`hemmelighet:VARIABEL;…`, for eksempel `studio-api-key:STUDIO_API_KEY`). API-et gjør lastingen først i
+`Program.cs` (`Infrastructure/KeyVaultSecrets.cs`), Studio i startkommandoen `node launch.mjs` (`scripts/launch.mjs`), som deretter starter `server.js`. Verdiene havner i miljøvariabler før
+konfigurasjonen bygges. En variabel som allerede har en brukbar verdi røres ikke; teksten til en uløst referanse (`@Microsoft.KeyVault(`…) regnes som «ikke satt». Tokenet sendes bare til en
+`*.vault.azure.net`-adresse. Svikter noe, starter appen likevel: API-et svarer 503 på alt unntatt `/api/health`, Studio svarer 503 «ikke konfigurert» og `/api/health?deep=1` sier `not-configured`. Loggen sier hvilken
+hemmelighet og hvorfor, aldri verdien, tokenet eller hvelvets egen feiltekst.
+
+**Hvorfor ikke plattformens Key Vault-referanser.** Lest fra Azure 2026-10-16 (kun lesing): alle ti referansene på Data API-et (8) og Auth API-et (2) har status `OtherReasons` («Reference was not able to be resolved»).
+Plattformens egen diagnostikk (`Key Vault Application Settings Diagnostics`, `…/detectors/KeyVaultAppSettings`) gir for begge, helt fra 2026-09-17 til nå, «VnetProxy warmup request timed out at 30 seconds» og
+«VnetProxy warmup request failed … ServiceUnavailable». Nettverk og identitet er like for alle tre appene (samme delnett, `applicationTraffic`, systemtildelt identitet, Key Vault Secrets User), og NSG-ene
+tillater 443 til delnettet for private endepunkter, så årsaken er ikke funnet og ligger på plattformsiden. Admin-appens ene referanse viser `Resolved`, men det er ett datapunkt på en app uten kjørende container og ikke
+bevis for at nye apper får det samme. Data API-et og Auth API-et laster derfor selv (`KeyVaultConfiguration`) og har gjort det siden oppsettet; at veien fra containeren virker, ses av at Data API-ets kall til OpenAI
+(som bruker nøkkelen fra hvelvet) lyktes 77 av 77 ganger siste 30 dager. Disse appene bruker samme vei.
+
+Etter første kodeutrulling, og etter hver omstart, skal loggen vise (forsinkelse på noen minutter i Log Analytics):
 
 ```bash
-for app in app-invi-studio-prod-001 app-invi-onboarding-api-prod-001; do
-  az rest --method get --url "https://management.azure.com/subscriptions/563af248-8461-42a9-8121-e350e48ca7b6/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/$app/config/configreferences/appsettings?api-version=2024-04-01" \
-    --query "value[].{setting:name,status:properties.status,secret:properties.secretName}" -o table
-done
+az monitor log-analytics query -w 574a4429-0f3d-4753-9271-693d7874d15d -o table --analytics-query "
+  AppServiceConsoleLogs | where TimeGenerated > ago(1h) and ResultDescription startswith 'key-vault:'
+  | project TimeGenerated, app = tostring(split(tolower(_ResourceId), '/')[-1]), ResultDescription | order by TimeGenerated desc"
+# forventet:  app-invi-onboarding-api-prod-001  key-vault: loaded 2 secret(s) into the environment: ONBOARDING_DB_PASSWORD, STUDIO_API_KEY
+#             app-invi-studio-prod-001          key-vault: loaded 2 secret(s) into the environment: STUDIO_API_KEY, STUDIO_SESSION_SECRET
 ```
 
-Forventet `Resolved`. Rolletildelinger kan trenge noen minutter; start appen på nytt etter at de er på plass. Referansene på Data API-et og Auth API-et viser i dag
-`OtherReasons` (de leser hemmelighetene selv via SDK), mens admin-appens referanse er `Resolved`; årsaken til forskjellen er ikke funnet. Er referansene til de nye
-appene fortsatt ikke løst etter 15 minutter, er plan B (som ikke er bygget): la appen lese hemmelighetene selv med `Azure.Identity` + `KEY_VAULT_URI`, slik Data API og
-admin-appen gjør. Til da gir koden 503 («ikke konfigurert») i stedet for å godta referanseteksten som nøkkel.
+| Linje i loggen | Betyr | Gjør |
+|---|---|---|
+| `the vault answered 403 Forbidden/ForbiddenByRbac` | rollen finnes ikke (ennå) på akkurat den hemmeligheten | sjekk `az role assignment list --assignee <appens principalId> --all`; rolletildelinger kan trenge noen minutter; start appen på nytt |
+| `the vault answered 404 SecretNotFound` | hemmeligheten finnes ikke under det navnet | opprett den (§4); start på nytt |
+| `the vault did not answer` | nettverksveien (privat endepunkt, privat DNS, NSG) | sjekk at endepunktet er `Approved` og at `privatelink.vaultcore.azure.net` er koblet til VNet-et |
+| `the managed identity endpoint …` / `no managed identity here` | identiteten eller plattformens identitetstjeneste | sjekk `az webapp identity show`; start på nytt; vedvarer det, er det en plattformsak |
+| ingen `key-vault:`-linje | `KEY_VAULT_URI` mangler i innstillingene (kjør Bicep-utrullingen), eller containeren kjører gammel kode | `az webapp config appsettings list` (bare navn), deploy på nytt |
+
+Start på nytt (en skrivende handling, bare for denne appen): `az webapp restart -g rg-invi-prod-swc-001 -n <app>`.
 
 ## 7. GitHub (krever administrator på repoene; utføres ikke av push-tilgang)
 
@@ -167,7 +189,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://api.cetchapp.com/api/v1/extras
 ```
 
 Ikke registrer en bedrift eller logg inn med ekte data som røyktest: registrering oppretter en ekte arrangør. Innlogging med et ukjent brukernavn er trygt.
-Se også Application Insights (`appi-invi-studio-prod-001`, `appi-invi-onboarding-api-prod-001`): ingen 5xx, ingen `Database connection failed`.
+Se også loggen (§6: `key-vault: loaded 2 secret(s)` for begge apper) og Application Insights (`appi-invi-studio-prod-001`, `appi-invi-onboarding-api-prod-001`): ingen 5xx, ingen `Database connection failed`.
 
 ## 10. Kapasitet på den delte planen
 
@@ -214,6 +236,7 @@ Ingen eksisterende ressurs er endret, så å rulle tilbake er å fjerne det nye.
 ## 13. Åpne punkter
 
 - Hemmelighetene i §4 er ikke opprettet (krever et menneske med tilgang til det private hvelvet).
+- Plattformens Key Vault-referanser løses ikke mot hvelvet for appene på planen (§6); årsaken (VnetProxy) er ikke funnet. Appene her er bygget for å klare seg uten dem. Skulle plattformen rettes senere, er det ingen endring å gjøre.
 - Tabellen `VenueType` er ikke verifisert i produksjonsdatabasen (§11); uten den feiler Studios registrering og profil.
 - Eier-trinnene (§3 trinn 4) og GitHub-oppsettet (§7) krever personer med de rettighetene; gaten, miljøreglene og det manuelle utløseren er laget for det.
 - Studio og API-et må ha samme `STUDIO_REQUIRE_EMAIL`. Verdien er `false` til Resend er klart (verifisert avsenderdomene for `invi.lol`, `RESEND_API_KEY`, `STUDIO_EMAIL_FROM`); da settes den til `true` i begge i samme endring.

@@ -108,12 +108,12 @@
         "ONBOARDING_DB_DATABASE",
         "ONBOARDING_DB_USER",
         "ONBOARDING_DB_SSL_MODE",
-        "ONBOARDING_DB_PASSWORD",
-        "STUDIO_API_KEY",
         "STUDIO_SERVER_ONLY",
         "ADMIN_ROUTES_ENABLED",
         "STUDIO_RESOURCES_ENABLED",
-        "STUDIO_REQUIRE_EMAIL"
+        "STUDIO_REQUIRE_EMAIL",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
       ],
       "mustEqual": {
         "ASPNETCORE_ENVIRONMENT": "Production",
@@ -122,7 +122,8 @@
         "ENABLE_SWAGGER": "false",
         "STUDIO_RESOURCES_ENABLED": "true",
         "RESERVATION_NOTIFICATIONS_MODE": "Disabled",
-        "RESERVATION_JOBS_ENABLED": "false"
+        "RESERVATION_JOBS_ENABLED": "false",
+        "KEY_VAULT_MAP": "database-password:ONBOARDING_DB_PASSWORD;studio-api-key:STUDIO_API_KEY"
       },
       "introducedBy": "onboardingapi"
     },
@@ -130,13 +131,14 @@
       "required": [
         "ONBOARDING_API_BASE_URL",
         "STUDIO_PUBLIC_ORIGIN",
-        "STUDIO_API_KEY",
-        "STUDIO_SESSION_SECRET",
-        "STUDIO_REQUIRE_EMAIL"
+        "STUDIO_REQUIRE_EMAIL",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
       ],
       "mustEqual": {
         "NODE_ENV": "production",
-        "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol"
+        "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
+        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
       },
       "introducedBy": "studio"
     }
@@ -856,8 +858,8 @@
           "text": "In production the API is protected by code (STUDIO_SERVER_ONLY, ADMIN_ROUTES_ENABLED=false), not by the network: it is reachable from the internet and answers 401/503 to every caller without the Studio key. The gate sees the settings, not the code that is deployed later; the reasons are in the API repository."
         },
         {
-          "id": "R-KV-REFERENCES",
-          "text": "The two Key Vault references (database password, Studio key) resolve only after studio-platform-rbac has run and the secret studio-api-key exists. Until then the app starts with the reference text as the value: the code treats that as 'not configured' (503). After the role assignments, check status Resolved with config/configreferences/appsettings."
+          "id": "R-KV-STARTUP-LOAD",
+          "text": "The database password and the Studio key are read from Key Vault by the app when it starts (KEY_VAULT_URI, KEY_VAULT_MAP), with its managed identity. That works only after studio-platform-rbac has run and the secret studio-api-key exists. If a secret cannot be loaded the app still starts and the lock-down answers 503 (never open); the console log says which secret and why. Nothing is retried: restart the app after fixing a role or a secret."
         }
       ],
       "touches": [
@@ -949,8 +951,8 @@
       "allowedChanges": [],
       "residualRisks": [
         {
-          "id": "R-KV-REFERENCES",
-          "text": "STUDIO_API_KEY and STUDIO_SESSION_SECRET are Key Vault references that resolve only after studio-platform-rbac has run and both secrets exist. Until then Studio starts with the reference text as the value and treats it as 'not configured' (sign-in 503). After the role assignments, check status Resolved with config/configreferences/appsettings."
+          "id": "R-KV-STARTUP-LOAD",
+          "text": "STUDIO_API_KEY and STUDIO_SESSION_SECRET are read from Key Vault by launch.mjs when Studio starts, with its managed identity. That works only after studio-platform-rbac has run and both secrets exist. If one cannot be loaded Studio still starts and answers 'not configured' (sign-in 503); the console log and /api/health?deep=1 say so. Nothing is retried: restart the app after fixing a role or a secret."
         }
       ],
       "touches": [

@@ -13,8 +13,8 @@ targetScope = 'resourceGroup'
 //      so the workflow can deploy that app and nothing else.
 //
 // Both apps and both identities are `existing`: this file can never create or change them. Run it after the app deployments (they create the
-// identities) and after the secrets exist. Role assignments can take a few minutes to reach the vault's data plane, so an app has to tolerate
-// a failed first read (a Key Vault reference that cannot be resolved yet is retried by the platform).
+// identities) and after the secrets exist. Role assignments can take a few minutes to reach the vault's data plane. The apps read their secrets once, when they start, and
+// do not retry: after the role assignments have been in place for a few minutes, restart the apps (docs/studio-and-onboarding-api.md section 6).
 
 @description('Workload name')
 param workloadName string

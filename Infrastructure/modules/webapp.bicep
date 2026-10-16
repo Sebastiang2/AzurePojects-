@@ -10,7 +10,8 @@ targetScope = 'resourceGroup'
 // plan, the Log Analytics workspace and the integration subnet are referenced by name as `existing`. The Key Vault is only named.
 //
 // Not created here, and by whom:
-//   - Key Vault secrets (a person, with access to the private vault) and the role that lets the app read them (studio-platform-rbac.bicep)
+//   - Key Vault secrets (a person, with access to the private vault) and the role that lets the app read them (studio-platform-rbac.bicep).
+//     The app reads them itself at start-up (see KEY_VAULT_URI and KEY_VAULT_MAP below)
 //   - DNS, certificates and the custom domain (webapp-domain.bicep; DNS is changed by hand)
 //   - the application code (the app's own GitHub workflow, through the identity created below)
 //
@@ -42,10 +43,10 @@ param linuxFxVersion string
 @description('Startup command, for example node server.js or dotnet invi-studio-api.dll')
 param appCommandLine string
 
-@description('App Settings that are not secret. Literal values only: a secret never goes here (see settingSecretNames)')
+@description('App Settings that are not secret. Literal values only: a secret never goes here (see settingSecretNames), and neither does a name from settingSecretNames')
 param appSettings object
 
-@description('Secret App Settings, as setting name -> Key Vault secret name. Each becomes a Key Vault reference (latest version) that the platform resolves with the app\'s own identity, which needs a role on that one secret (studio-platform-rbac.bicep). A reference the platform cannot resolve reaches the app as its own text, so an app must treat that text as "not configured".')
+@description('Secrets the app reads from Key Vault at start-up, as environment variable name -> Key Vault secret name. They are not App Settings: the app loads them itself with its managed identity (KEY_VAULT_URI and KEY_VAULT_MAP), because App Service Key Vault references do not resolve against this vault. The identity needs a role on each named secret (studio-platform-rbac.bicep)')
 param settingSecretNames object = {}
 
 @description('Value of SCM_DO_BUILD_DURING_DEPLOYMENT. The pipeline builds, the platform must not build on the shared instance')
@@ -68,12 +69,19 @@ var appInsightsName = 'appi-${workloadName}-${appKey}-${environment}-${instance}
 var deployIdentityName = 'id-gha-${workloadName}-${appKey}-${environment}-${instance}'
 var createDeployIdentity = !empty(githubRepository)
 
-// Key Vault references. The vault is private and the secret names are not secret; the values never pass through this template.
-var keyVaultReferences = toObject(
-  items(settingSecretNames),
-  item => item.key,
-  item => '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${item.value})'
-)
+// Secrets. The apps on this plan read them from the vault themselves, in the container, through the private endpoint: App Service Key Vault
+// references do not resolve against this vault (every reference on the Data API and the Auth API reports "Reference was not able to be
+// resolved"; the platform's diagnostics say "VnetProxy warmup request timed out"), so none are used. The app is told where the vault is and which
+// secret goes into which environment variable, as vault secret : variable pairs. Neither is secret and no secret value passes through this
+// template. The two names are chosen so that the safety gate does not take them for secrets (it flags a literal under a name with
+// "secret" in it). The pairs are sorted by variable name, so the value is stable.
+var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/'
+var secretLoading = empty(settingSecretNames)
+  ? {}
+  : {
+      KEY_VAULT_URI: keyVaultUri
+      KEY_VAULT_MAP: join(map(items(settingSecretNames), item => '${item.value}:${item.key}'), ';')
+    }
 
 // The portal links a site to its Application Insights resource with this tag. Same exact value the other sites carry (lower-case provider
 // namespace); see appservice.bicep.
@@ -188,14 +196,14 @@ resource site 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
-// Application settings: the literal settings of the parameter file, the Key Vault references, and what the platform needs.
+// Application settings: the literal settings of the parameter file, where to find the secrets, and what the platform needs.
 resource siteSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   parent: site
   name: 'appsettings'
 
   properties: union(
     appSettings,
-    keyVaultReferences,
+    secretLoading,
     {
       APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
       ApplicationInsightsAgent_EXTENSION_VERSION: '~3'

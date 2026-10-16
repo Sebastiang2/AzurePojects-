@@ -15,11 +15,13 @@ using '../modules/webapp.bicep'
 //   1. this deployment, then the Studio app deployment (prod.studio.bicepparam)
 //   2. the Key Vault secrets (by a person with access to the private vault): studio-api-key (new). database-password exists already.
 //   3. studio-platform-rbac (needs an Owner): reads studio-api-key and database-password
-//   4. the first code deployment from the app's own workflow (manual)
-//   5. verify the Key Vault references resolved:  az rest --method get --url "<site resource id>/config/configreferences/appsettings?api-version=2024-04-01"
+//   4. the first code deployment from the app's own workflow (manual). The app reads both secrets itself when it starts
+//   5. verify: the console log has "key-vault: loaded 2 secret(s) into the environment: ONBOARDING_DB_PASSWORD, STUDIO_API_KEY" and /api/health
+//      answers. If a secret failed, the log says which and why: fix the role or the secret, then restart the app
+//      (docs/studio-and-onboarding-api.md, section 6)
 //
 // The code locks itself down with two settings below (the API was written for a trusted network): STUDIO_SERVER_ONLY makes every route except
-// /api/health need the Studio key, and ADMIN_ROUTES_ENABLED=false makes /api/admin/* answer 404. If STUDIO_API_KEY is not resolved the API
+// /api/health need the Studio key, and ADMIN_ROUTES_ENABLED=false makes /api/admin/* answer 404. If STUDIO_API_KEY could not be loaded the API
 // answers 503, never "open".
 //
 // Not set on purpose: OPENAI_API_KEY, MAILBOX_*, RESEND_API_KEY and STUDIO_EMAIL_FROM (admin and e-mail features that stay off), and
@@ -78,8 +80,9 @@ param appSettings = {
   XDT_MicrosoftApplicationInsights_PreemptSdk: '1'
 }
 
-// setting name -> Key Vault secret name. Key Vault references: the platform resolves them with the app's own identity once
-// studio-platform-rbac has given it a role on that one secret.
+// environment variable name -> Key Vault secret name. The app reads them from the vault when it starts (KEY_VAULT_URI and KEY_VAULT_MAP are
+// generated from this) with its own identity, once studio-platform-rbac has given it a role on that one secret. A name here is deliberately not
+// an App Setting as well: the platform would put the text of an unresolved Key Vault reference there, and the app only trusts a value that is not.
 param settingSecretNames = {
   ONBOARDING_DB_PASSWORD: 'database-password'
   STUDIO_API_KEY: 'studio-api-key'

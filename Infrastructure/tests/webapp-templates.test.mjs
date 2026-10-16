@@ -1,6 +1,6 @@
 // Regression tests for the Studio and onboarding API deployments. They evaluate the real Bicep with `az bicep snapshot` (offline: no deployment and
 // no Azure call) and look at what would be sent, and they cross-check the app deployments against the role assignments of studio-platform-rbac:
-// a Key Vault reference without a role on its secret never resolves, and a role on a secret nobody references is access nobody needs.
+// a secret an app loads without a role on it can never be read, and a role on a secret nobody loads is access nobody needs.
 //
 // Skipped when the Azure CLI or Bicep is not installed. Run:
 //   node --test Infrastructure/tests/webapp-templates.test.mjs
@@ -11,6 +11,8 @@ import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { looksSecret } from "../scripts/gate/lib/secrets.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const SUBSCRIPTION = "00000000-0000-0000-0000-000000000000";
@@ -87,22 +89,32 @@ for (const app of APPS) {
     assert.deepEqual(credential.properties.audiences, ["api://AzureADTokenExchange"]);
   });
 
-  test(`${app.site}: no secret is a literal App Setting, and no name is set twice`, { skip: !haveBicep }, () => {
-    // union() lets the Key Vault reference win silently, so a name in both blocks of the parameter file would hide a mistake.
+  test(`${app.site}: secrets are loaded by the app from Key Vault, not set as App Settings, and no name is set twice`, { skip: !haveBicep }, () => {
+    // App Service Key Vault references do not resolve against this vault (every reference on the two APIs reports "Reference was not able to be resolved"),
+    // so the app reads its secrets itself: it is told where the vault is (KEY_VAULT_URI) and which secret goes in which variable (KEY_VAULT_MAP).
     const text = readFileSync(join(here, "..", "environments", app.file), "utf8");
     const keys = (param) => {
       const block = new RegExp(`^param ${param} = \\{\\r?\\n([\\s\\S]*?)^\\}`, "m").exec(text)?.[1] ?? "";
       return [...block.matchAll(/^ {2}([A-Za-z0-9_]+):/gm)].map((m) => m[1]);
     };
     assert.ok(keys("appSettings").length > 5 && keys("settingSecretNames").length >= 2, "the parameter blocks were found");
-    assert.deepEqual(keys("appSettings").filter((k) => keys("settingSecretNames").includes(k)), [], "a name is either a literal or a Key Vault reference");
+    assert.deepEqual(keys("appSettings").filter((k) => keys("settingSecretNames").includes(k)), [], "a name is either an App Setting or a secret the app loads, never both");
     assert.equal(new Set(keys("appSettings")).size, keys("appSettings").length, "no name is declared twice in appSettings");
+
     const bag = one(snapshot(app.file), "Microsoft.Web/sites/config").properties;
+    // `az bicep snapshot` leaves environment() unevaluated; this is the exact expression, and what it gives in the public cloud.
+    const vaultUri = String(bag.KEY_VAULT_URI).replace("[format('https://{0}{1}/', 'kv-invi-prod-001', environment().suffixes.keyvaultDns)]", "https://kv-invi-prod-001.vault.azure.net/");
+    assert.equal(vaultUri, "https://kv-invi-prod-001.vault.azure.net/");
+    const pairs = String(bag.KEY_VAULT_MAP).split(";").map((pair) => pair.split(":"));
+    assert.ok(pairs.every((pair) => pair.length === 2 && /^[a-z0-9-]+$/.test(pair[0]) && /^[A-Z][A-Z0-9_]+$/.test(pair[1])), `KEY_VAULT_MAP is secret:NAME pairs: ${bag.KEY_VAULT_MAP}`);
+    assert.deepEqual(pairs.map((pair) => pair[1]), [...keys("settingSecretNames")].sort(), "the map lists exactly the names of settingSecretNames, sorted by name");
+    for (const name of keys("settingSecretNames")) assert.equal(bag[name], undefined, `${name} is not an App Setting: the app puts it in its environment itself`);
+    assert.ok(!Object.values(bag).some((value) => String(value).includes("@Microsoft.KeyVault(")), "no Key Vault reference: the platform cannot resolve them against this vault");
+    assert.ok(!looksSecret("KEY_VAULT_URI", vaultUri) && !looksSecret("KEY_VAULT_MAP", bag.KEY_VAULT_MAP), "the two loader settings are not taken for secrets by the gate");
+
     const secretName = /(secret|password|passwd|apikey|api_key|key$|token|connectionstring|salt|signing|private_key|credential)/i;
-    const references = Object.entries(bag).filter(([, v]) => /^@Microsoft\.KeyVault\(VaultName=kv-invi-prod-001;SecretName=[a-z0-9-]+\)$/.test(String(v)));
-    assert.ok(references.length >= 2, "at least the Studio key and one more secret are Key Vault references");
     for (const [name, value] of Object.entries(bag)) {
-      if (/^@Microsoft\.KeyVault\(/.test(String(value)) || String(value).startsWith("[")) continue;
+      if (String(value).startsWith("[")) continue;
       if (name === "APPLICATIONINSIGHTS_CONNECTION_STRING") continue;
       // STUDIO_SERVER_ONLY and STUDIO_REQUIRE_EMAIL are switches; a switch is not a secret.
       if (secretName.test(name)) assert.match(String(value), /^(true|false)$/i, `${name} looks like a secret and is a literal`);
@@ -113,9 +125,18 @@ for (const app of APPS) {
 test("the Studio key is the same Key Vault secret in both apps, and Studio reaches the API at its default host name", { skip: !haveBicep }, () => {
   const api = one(snapshot("prod.onboardingapi.bicepparam"), "Microsoft.Web/sites/config").properties;
   const studio = one(snapshot("prod.studio.bicepparam"), "Microsoft.Web/sites/config").properties;
-  assert.equal(api.STUDIO_API_KEY, studio.STUDIO_API_KEY, "one shared key, one secret");
+  const secretOf = (bag, name) => Object.fromEntries(String(bag.KEY_VAULT_MAP).split(";").map((pair) => pair.split(":").reverse()))[name];
+  assert.equal(secretOf(api, "STUDIO_API_KEY"), "studio-api-key");
+  assert.equal(secretOf(studio, "STUDIO_API_KEY"), secretOf(api, "STUDIO_API_KEY"), "one shared key, one secret");
+  assert.equal(secretOf(api, "ONBOARDING_DB_PASSWORD"), "database-password", "the same database secret the other APIs use");
+  assert.equal(secretOf(studio, "STUDIO_SESSION_SECRET"), "studio-session-secret");
   assert.equal(studio.ONBOARDING_API_BASE_URL, "https://app-invi-onboarding-api-prod-001.azurewebsites.net");
   assert.equal(studio.STUDIO_REQUIRE_EMAIL, api.STUDIO_REQUIRE_EMAIL, "both apps must agree on the e-mail step");
+});
+
+test("Studio starts through launch.mjs (it loads the secrets, then runs server.js) and the onboarding API through its dll", { skip: !haveBicep }, () => {
+  assert.equal(one(snapshot("prod.studio.bicepparam"), "Microsoft.Web/sites").properties.siteConfig.appCommandLine, "node launch.mjs");
+  assert.equal(one(snapshot("prod.onboardingapi.bicepparam"), "Microsoft.Web/sites").properties.siteConfig.appCommandLine, "dotnet invi-studio-api.dll");
 });
 
 test("the onboarding API is locked down in its settings, and Studio trusts one origin", { skip: !haveBicep }, () => {
@@ -134,7 +155,7 @@ test("the onboarding API is locked down in its settings, and Studio trusts one o
   assert.equal(studio.NODE_ENV, "production");
 });
 
-test("every Key Vault reference has a role on exactly its secret, and every role belongs to a reference", { skip: !haveBicep }, () => {
+test("every secret an app loads has a role on exactly that secret, and every role belongs to a secret an app loads", { skip: !haveBicep }, () => {
   const rbac = ofType(snapshot("prod.studio-platform-rbac.bicepparam"), "Microsoft.Authorization/roleAssignments");
   const grants = new Map(); // "<site>|<secret>" -> true
   const deploy = new Map(); // "<site>" -> role definition
@@ -151,15 +172,12 @@ test("every Key Vault reference has a role on exactly its secret, and every role
       deploy.set(scope.split("/").pop(), ra.properties.roleDefinitionId);
     }
   }
-  const references = new Map();
+  const loaded = new Map();
   for (const app of APPS) {
     const bag = one(snapshot(app.file), "Microsoft.Web/sites/config").properties;
-    for (const value of Object.values(bag)) {
-      const secret = /^@Microsoft\.KeyVault\(VaultName=kv-invi-prod-001;SecretName=([a-z0-9-]+)\)$/.exec(String(value))?.[1];
-      if (secret) references.set(`${app.site}|${secret}`, true);
-    }
+    for (const pair of String(bag.KEY_VAULT_MAP).split(";")) loaded.set(`${app.site}|${pair.split(":")[0]}`, true);
   }
-  assert.deepEqual([...references.keys()].sort(), [...grants.keys()].sort(), "references and secret-scoped roles must be the same set");
+  assert.deepEqual([...loaded.keys()].sort(), [...grants.keys()].sort(), "the secrets each app loads and the secret-scoped roles must be the same set");
   assert.deepEqual([...deploy.keys()].sort(), APPS.map((a) => a.site).sort(), "each app has one deploy role, on itself");
   assert.ok(![...grants.keys()].some((k) => k.endsWith("|jwt-signing-key")), "neither app can read the JWT signing key");
 });
