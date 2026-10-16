@@ -27,6 +27,7 @@ SUB=563af248-8461-42a9-8121-e350e48ca7b6; RG=rg-invi-prod-swc-001; API=app-invi-
 | D8 | Hvem er på vakt søndag, og hvem kan stoppe appene (rollback-myndighet)? | ingen | teknisk |
 | D9 | `VenueType`/`OrganizersTable` mangler kolonner (hvis forhåndssjekken viser det): Karl leverer ALTER-setningene. Jeg har ikke gjettet dem | NO-GO til de er på plass | teknisk |
 | D10 | Skal Data API-et få `ADMIN_ACTIVITY_CREATOR_ID` i **samme søndag**? (egen endring + omstart av Data API-et) | adminpanelets redaksjonelle publisering gir 503 (som i dag) | nei for Studio |
+| D11 | **Synlighet i appen.** Publisert merch og «Selges på stadion» vises i Invi-appen først når Data API-et i produksjon har koden (i dag bare på `staging`, commit f934035 og 6a33206) og en appversjon som viser den er ute (appen på `master` har den; butikkene hadde 3.3.22 sist sjekket 2026-10-07). Skal kunder betale for merch før den er synlig? | Studio virker, men en klubb som betaler 250 kr/mnd ser ikke varene i appen | betaling for merch (anbefalt NO-GO til det er synlig) |
 
 ## B. GO / NO-GO
 
@@ -63,6 +64,7 @@ Alle må være oppfylt etter at GO-T er gjennomført og trinn 1-12 er grønne. E
 | P9 | Rollback er gått gjennom (hvem stopper hva, og hvordan): se E | to personer har lest E |
 | P10 | Admin kan godkjenne selvregistrerte og utstede innlogginger (D7: `IsActive=false` til godkjent) | testet med testarrangøren |
 | P11 | Karl har sagt ja til å åpne (skriftlig) | meldingen lagres |
+| P12 | **Det kunden betaler for er synlig i appen** (D11): produksjons-Data API-et har merch-/billettsalg-koden og appversjonen i butikkene viser den. Ellers tas det ikke betalt for merch (holdes stengt), og kundene får vite det | `gh run list --repo CetchApp/invi-data-api --workflow main_app-invi-data-api-prod-001.yml --limit 1 --json headSha`, så `git merge-base --is-ancestor f934035 <headSha>`; appversjon i butikkene |
 
 ## C. Før start (lørdag og søndag morgen; kun lesing og forberedelser)
 
