@@ -115,7 +115,7 @@ gh run list --repo CetchApp/invi-studio --workflow deploy-azure.yml --limit 1
 ```
 
 Forventet: `build` og `deploy` grønne. API-ets smoke check viser at `/api/health` svarer og at en anonym forespørsel til en vanlig rute avvises (401). Studios viser `/api/health` 200, innloggingssiden 200 og dyp helsesjekk (en advarsel, ikke feil, hvis noe i trinn 3-5 mangler).
-Stopp: rød `deploy`. Rollback: tilbakestill commit-en på `main` og kjør workflowen på nytt (pakken beholdes én dag).
+Stopp: rød `deploy`. Feiler `build` på «artifact storage quota» (Data API-et gjorde det 2026-10-07), er organisasjonens lagringskvote for Actions brukt opp: pakkene er små (om lag 15 MB, ett døgn), men kvoten må ha plass. Rollback: tilbakestill commit-en på `main` og kjør workflowen på nytt (pakken beholdes én dag).
 
 **Første oppstart av API-et skriver til produksjonsdatabasen:** `StudioTablesStartup` oppretter `OrganizerMerch` og `OrganizerTicketSale` med `CREATE TABLE IF NOT EXISTS` (bare nye tabeller). De blir stående ved tilbakerulling (`Migrations/*.rollback.sql` i API-repoet).
 
