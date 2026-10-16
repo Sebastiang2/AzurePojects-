@@ -385,7 +385,10 @@ function parseRoleAssignment(ra, live) {
   let principalId;
   const site = /reference\('[^']*\/sites\/([^'\/]+)'/.exec(String(principalExpr))?.[1];
   const slotMatch = /reference\('[^']*\/sites\/([^'\/]+)\/slots\/([^'\/]+)'/.exec(String(principalExpr));
+  // The deploy identity of an app is a user-assigned identity: its principal is read from the live identity list.
+  const userAssigned = /reference\('[^']*\/userAssignedIdentities\/([^'\/]+)'/.exec(String(principalExpr))?.[1];
   if (site) principalId = live.apps[site]?.show?.identity?.principalId;
+  else if (userAssigned) principalId = live.identities.find((i) => lc(i.name) === lc(userAssigned))?.principalId;
   else if (!isExpression(principalExpr)) principalId = principalExpr;
   let name = ra.name;
   let nameKnown = true;

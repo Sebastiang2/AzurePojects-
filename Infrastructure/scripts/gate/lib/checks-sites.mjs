@@ -166,6 +166,7 @@ export function checkAppSettings(ctx) {
     const exists = live.resources.some((r) => lc(r.type) === "microsoft.web/sites" && lc(r.name) === lc(name));
     if (!Array.isArray(liveEntries)) {
       if (exists) findings.fail("EVIDENCE-APPSETTINGS", name, "live app setting names could not be read");
+      else checkNewSiteSettings(ctx, name, want, appManifest);
       continue;
     }
     const liveBy = new Map(liveEntries.map((e) => [e.name, e]));
@@ -227,17 +228,46 @@ export function checkAppSettings(ctx) {
     }
 
     // 2. Names the application cannot start (or must not be enabled) without, and values that must hold.
-    for (const required of appManifest.required ?? []) {
-      if (!Object.prototype.hasOwnProperty.call(want, required)) findings.fail("BAG-REQUIRED-MISSING", name, `required setting ${required} is not in the desired configuration`, { setting: required });
-    }
-    for (const [setting, mustBe] of Object.entries(appManifest.mustEqual ?? {})) {
-      const value = want[setting];
-      if (value === undefined) continue; // reported by the required list when it matters
-      if (isExpression(value) || lc(String(value)) !== lc(String(mustBe))) {
-        findings.fail("BAG-INVARIANT", name, `${setting} must be ${JSON.stringify(mustBe)} and is ${JSON.stringify(value)}`, { setting });
-      }
+    checkRequiredAndInvariants(findings, name, want, appManifest);
+  }
+}
+
+/** The names an application cannot start without, and the values that must hold. Judged on the DESIRED bag, so it applies to a site that
+ *  exists and to one that is about to be created. */
+function checkRequiredAndInvariants(findings, name, want, appManifest) {
+  for (const required of appManifest.required ?? []) {
+    if (!Object.prototype.hasOwnProperty.call(want, required)) findings.fail("BAG-REQUIRED-MISSING", name, `required setting ${required} is not in the desired configuration`, { setting: required });
+  }
+  for (const [setting, mustBe] of Object.entries(appManifest.mustEqual ?? {})) {
+    const value = want[setting];
+    if (value === undefined) continue; // reported by the required list when it matters
+    if (isExpression(value) || lc(String(value)) !== lc(String(mustBe))) {
+      findings.fail("BAG-INVARIANT", name, `${setting} must be ${JSON.stringify(mustBe)} and is ${JSON.stringify(value)}`, { setting });
     }
   }
+}
+
+/** A site that does not exist yet has no live settings to compare with: every setting is created with it, and the creation itself is judged by
+ *  the what-if rules and the manifest. What can still be checked about the bag is checked here, because creation is exactly when it matters:
+ *  the required names and invariants, the wiring of secure parameters, and that nothing secret-looking is a literal. */
+function checkNewSiteSettings(ctx, name, want, appManifest) {
+  const { findings } = ctx;
+  findings.info("BAG-NEW-SITE", name, `the site does not exist yet: its ${Object.keys(want).length} settings are created with it`);
+  for (const [setting, value] of Object.entries(want)) {
+    const feed = PLACEHOLDER.exec(typeof value === "string" ? value : "");
+    const expected = appManifest.secureFeeds?.[setting];
+    if (feed) {
+      if (!expected) findings.fail("BAG-SECURE-FEED-UNDECLARED", name, `${setting} is fed from ${feed[1]}, which the manifest does not declare`);
+      else if (expected !== feed[1]) findings.fail("BAG-SECURE-FEED-MISMATCH", name, `${setting} is fed from ${feed[1]} but the manifest expects ${expected}`);
+      else findings.info("BAG-SECURE-FEED", name, `${setting} <- ${feed[1]} (value not comparable)`);
+    } else if (expected) {
+      findings.fail("BAG-SECURE-FEED-MISSING", name, `${setting} must be fed from ${expected} and is not`);
+    }
+    if (typeof value === "string" && !feed && !isExpression(value) && !/^@Microsoft\.KeyVault\(/.test(value) && NAME_SECRET.test(setting)) {
+      findings.fail("BAG-SECRET-LITERAL", name, `${setting} looks like a secret and is declared as a literal`);
+    }
+  }
+  checkRequiredAndInvariants(findings, name, want, appManifest);
 }
 
 /**
@@ -345,7 +375,10 @@ export function checkHostBindings(ctx) {
     }
     const lp = current.properties ?? {};
     if (p.sslState !== undefined && lc(p.sslState) !== lc(lp.sslState)) {
-      findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${lp.sslState} to ${p.sslState}`);
+      // Adding TLS to a bound host name (Disabled -> SniEnabled) is a deliberate second step; the manifest names it with exact before/after.
+      const allowance = allowedChange(ctx.deployment, `${siteName}/${host}`, "sslState", lp.sslState, p.sslState);
+      if (allowance) findings.allowed("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState: ${lp.sslState} -> ${p.sslState} (${allowance.why ?? "listed in manifest"})`);
+      else findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${lp.sslState} to ${p.sslState}`);
     }
     if (p.hostNameType !== undefined && lc(p.hostNameType) !== lc(lp.hostNameType)) {
       findings.fail("BINDING-TYPE-CHANGE", `${siteName}/${host}`, `hostNameType would change from ${lp.hostNameType} to ${p.hostNameType}`);
