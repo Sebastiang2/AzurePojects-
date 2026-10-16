@@ -1,0 +1,32 @@
+name: Validate the Bicep code (offline)
+
+# Builds and lints every template, compiles every parameter file, runs the static checks and the offline tests of the deployment safety gate and of
+# the templates (Infrastructure/scripts/validate.sh). It has no Azure credentials and cannot change anything: a deployment is never made from here.
+# Production is deployed only by a person, behind the gate (Infrastructure/scripts/deploy.sh, written approval); see docs/deploy-runbook.md.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install the Bicep CLI
+        run: az bicep install
+
+      - name: Validate
+        run: bash Infrastructure/scripts/validate.sh

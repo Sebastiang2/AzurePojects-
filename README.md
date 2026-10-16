@@ -314,7 +314,7 @@ Dette repoet inneholder **kun infrastrukturkode**. Følgende er **ikke** inklude
    - Onboarding-API: `CetchApp/cetchapp-onboarding-api`
    - Web App: `CetchApp/Cetchapp-web`
 
-2. **CI/CD pipelines** – GitHub Actions workflows lever i app-repoene
+2. **CI/CD pipelines for applikasjonene** – GitHub Actions workflows lever i app-repoene. Dette repoet har bare `iac-validate.yml`, som validerer Bicep offline (uten Azure-tilgang); utrulling skjer aldri derfra, bare med `deploy.sh` bak gaten
 
 3. **Secrets og sertifikater** – lagres i Key Vault eller miljøvariabler
 
