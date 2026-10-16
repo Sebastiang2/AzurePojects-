@@ -132,11 +132,13 @@
         "ONBOARDING_API_BASE_URL",
         "STUDIO_PUBLIC_ORIGIN",
         "STUDIO_REQUIRE_EMAIL",
+        "STUDIO_ENVIRONMENT",
         "KEY_VAULT_URI",
         "KEY_VAULT_MAP"
       ],
       "mustEqual": {
         "NODE_ENV": "production",
+        "STUDIO_ENVIRONMENT": "production",
         "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
         "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
       },
