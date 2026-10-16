@@ -64,8 +64,8 @@ Produksjonsmiljøet består av følgende komponenter:
 - **Studio**: `app-invi-studio-prod-001` (Linux, Node 24 LTS, Next.js standalone, `node server.js`) på den delte planen. URL: `https://studio.invi.lol`.
   Studio er en Node-server (server-rendrede sider, route handlers og `proxy.ts`), ikke et statisk nettsted, og kan derfor ikke ligge på Static Web Apps.
 - **Onboarding-API**: `app-invi-onboarding-api-prod-001` (Linux, .NET 10) på den delte planen. Ingen eget domene: bare Studio-serveren kaller det, på
-  `https://app-invi-onboarding-api-prod-001.azurewebsites.net`. API-et har ingen egen autentisering og låses i kode (`STUDIO_SERVER_ONLY=true`,
-  `ADMIN_ROUTES_ENABLED=false`): alle ruter unntatt `/api/health` krever Studio-nøkkelen.
+  `https://app-invi-onboarding-api-prod-001.azurewebsites.net`. API-et låses i kode (`STUDIO_SERVER_ONLY=true`, `ADMIN_ROUTES_ENABLED=false`):
+  alle ruter unntatt `/api/health` krever Studio-nøkkelen.
 - Begge: VNet-integrasjon med Route All (privat MySQL og privat Key Vault), system-assigned identitet, HTTPS-only, FTP og basic SCM av, egen Application
   Insights og diagnostikk til `log-invi-prod-001`, og en bruker-tildelt identitet (`id-gha-invi-studio-prod-001`, `id-gha-invi-onboarding-api-prod-001`) med
   federated credential for GitHub-miljøet `production` i appens eget repo (OIDC, ingen hemmelighet). Ingen ny plan, ingen ny database.

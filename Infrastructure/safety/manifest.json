@@ -853,7 +853,7 @@
       "residualRisks": [
         {
           "id": "R-ONBOARDING-KEY",
-          "text": "The API was written without authentication. In production it is protected by code (STUDIO_SERVER_ONLY, ADMIN_ROUTES_ENABLED=false), not by the network: it is reachable from the internet and answers 401/503 to every caller without the Studio key. The gate sees the settings, not the code that is deployed later."
+          "text": "In production the API is protected by code (STUDIO_SERVER_ONLY, ADMIN_ROUTES_ENABLED=false), not by the network: it is reachable from the internet and answers 401/503 to every caller without the Studio key. The gate sees the settings, not the code that is deployed later; the reasons are in the API repository."
         },
         {
           "id": "R-KV-REFERENCES",
