@@ -181,7 +181,7 @@ Sertifikatet er et gratis, selvfornyende App Service-sertifikat og krever at CNA
 
 ```bash
 curl -sS https://studio.invi.lol/api/health                      # {"status":"ok"}
-curl -sS "https://studio.invi.lol/api/health?deep=1"             # {"status":"ok"}: nøkkel, API og database virker (503 med problem ved feil)
+curl -sS "https://studio.invi.lol/api/health?deep=1"             # {"status":"ok"}: nøkkel, API, database og VenueType virker. 503 med problem: not-configured (hemmelighet ikke lastet), api-unreachable, api-refused, database eller schema (VenueType/kolonne mangler, §11)
 curl -sS -o /dev/null -w '%{http_code}\n' https://studio.invi.lol/organization/login          # 200
 curl -sS -o /dev/null -w '%{http_code}\n' https://app-invi-onboarding-api-prod-001.azurewebsites.net/api/organizers/1   # 401 (aldri 200)
 curl -sS -o /dev/null -w '%{http_code}\n' https://app-invi-onboarding-api-prod-001.azurewebsites.net/api/admin/organizers # 404
@@ -201,26 +201,42 @@ bør planen oppgraderes til P1v3 (kostnadsbeslutning for teamet, via `main`-utru
 
 ## 11. Databasen
 
-Onboarding-API-et bruker `inviadmin` (som begge de andre API-ene) og forutsetter tabellene i `invi`. Verifiser skrivebeskyttet fra en vert med nettverksvei til
-MySQL, før appen åpnes for kunder:
+Onboarding-API-et bruker `inviadmin` (som begge de andre API-ene) og databasen `invi`. Databasen er privat og kan ikke leses herfra (VNet-maskinen `vm-db-migration-temp` er deallocated og skal ikke startes uten at noen har lov). Det som er bevist, er lest
+fra produksjonsloggene til Data API-et (Log Analytics, 30 dager, lest 2026-10-16); resten må en person med nettverksvei sjekke skrivebeskyttet før Studio åpnes for kunder.
+
+| Bevist i produksjon | Hvordan |
+|---|---|
+| tabellene `OrganizersTable`, `OrganizerAccountTable`, `OrganizerCategoryTable`, `OrganizerOpeningHours`, `CategoryTable`, `ActivityTable`, `UserTable` | spurt uten feil av Data API-et (sist 2026-10-16) |
+| `VenueType` og kolonnene `VenueTypeId`, `VenueTypeKey`, `VenueTypeName`, `IsActive` | `SELECT VenueTypeId, COALESCE(VenueTypeName, VenueTypeKey) … FROM VenueType WHERE COALESCE(IsActive, 1) = 1` lyktes 2026-10-15 17:40 og 18:00 |
+| de 15 tabellene i `OrganizerReservationSchema` (`ResourceTable`, `Reservation`, `ActivityDraftTable` …), `OrganizersTable.TimeZone`, `ActivityTable.CancelledAt` og `CancellationReason` | «Organizer and reservation tables verified/created.» ved hver oppstart siden 2026-10-06 (13 ganger, sist 2026-10-16 13:27Z) og ingen «Could not ensure …» (hvert trinn logger sin egen feil) |
+| `ActivityTable.OrganizerId`, `IsEnded` | spurt uten feil |
+
+**Ikke bevist, og med følge hvis det mangler:**
+
+* `VenueType` har ti kolonner i API-ets spørring; fire er bevist. `Description` brukes av *alle* organizer-lesninger (API-et gjør `LEFT JOIN VenueType` på hver arrangør), så mangler den, feiler hver Studio-side. De andre fem (`DefaultGeometryType`, `UiTemplateKey`,
+  `MarkerIconKey`, `RequiresPreciseTapArea`, `IsRouteType`) brukes av `/api/venue-types` (registrering og profil). Studios dype helsesjekk (`/api/health?deep=1`) leser venue-typene og svarer `503` med `problem: "schema"` hvis noe av dette mangler,
+  så ett kall etter utrulling avgjør det (§9).
+* `OrganizersTable`: API-et bruker ti kolonner som Data API-et ikke bruker og som loggene derfor ikke beviser: `OrganizerSlug`, `GeoJson`, `GeometryType`, `TapTargetGeoJson`, `RecurrenceNote`, `LastCheckedAt`, `CreatedAt`, `UpdatedAt`, `CancellationNoticeMinutes` og
+  `ReservationApprovalMinutes` (de to siste hører til Studios reservasjoner). `UserTable` må ha bruker 657 (skaperen av aktiviteter).
+* `OrganizerMerch` opprettes av ingen av API-ene: det er en manuell migrering (`Migrations/Apply-OrganizerMerch.ps1` i API-repoet). Uten den svarer merch-ruten `503 «Merch er ikke satt opp ennå»`; resten av Studio virker. Appen leser merch fra Data API-et, og `main` der har ingen merch-kode ennå.
+
+Skrivebeskyttet kontroll fra en vert med nettverksvei til MySQL:
 
 ```sql
--- Skal gi 18 rader (tabellene Studio og API-et leser og skriver)
-SELECT table_name FROM information_schema.tables WHERE table_schema = 'invi' AND table_name IN (
-  'OrganizersTable','OrganizerAccountTable','OrganizerCategoryTable','OrganizerOpeningHours','CategoryTable','ActivityTable','ActivityDraftTable',
-  'UserTable','VenueType','ResourceTable','OrganizerResourceConnection','OrganizerResourceUnit','OrganizerResourceBlock','OrganizerResourceBookingHours',
-  'ActivityResourceConnection','Reservation','ReservationResourceConnection','UserReservationConnection');
--- Skal gi 3 rader
-SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' AND table_name = 'ActivityTable' AND column_name IN ('OrganizerId','CancelledAt','CancellationReason');
+-- Skal gi 10 rader (VenueType slik onboarding-API-et leser den)
+SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' AND table_name = 'VenueType' AND column_name IN (
+  'VenueTypeId','VenueTypeKey','VenueTypeName','Description','DefaultGeometryType','UiTemplateKey','MarkerIconKey','RequiresPreciseTapArea','IsRouteType','IsActive');
+-- Skal gi 10 rader (OrganizersTable-kolonner API-et bruker og loggene ikke beviser)
+SELECT column_name FROM information_schema.columns WHERE table_schema = 'invi' AND table_name = 'OrganizersTable' AND column_name IN (
+  'OrganizerSlug','GeoJson','GeometryType','TapTargetGeoJson','RecurrenceNote','LastCheckedAt','CreatedAt','UpdatedAt','CancellationNoticeMinutes','ReservationApprovalMinutes');
 -- Skal gi 1: aktiviteter opprettes alltid med bruker 657 som skaper
 SELECT COUNT(*) FROM UserTable WHERE UserId = 657;
+-- 0 eller 1: 1 når migreringen for merch er kjørt
+SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'invi' AND table_name = 'OrganizerMerch';
 ```
 
-Data API-et oppretter ved oppstart `OrganizerAccountTable`, ressurs- og reservasjonstabellene, `OrganizerOpeningHours` og `ActivityDraftTable` (med kolonnene
-`CancelledAt` og `CancellationReason`); `OrganizersTable`, `CategoryTable`, `OrganizerCategoryTable`, `ActivityTable` og `UserTable` er appens egne tabeller. **`VenueType` opprettes ikke av noen av API-ene:
-Studios registrering og profil leser den, og onboarding-API-et svarer 500 uten den.** Den finnes i testdatabasen; mangler den i `invi`, må den opprettes med samme rader som en egen,
-godkjent databaseendring (ikke noe denne utrullingen gjør), før Studio åpnes for kunder. `ReservationNotificationOutbox` trengs ikke så lenge `RESERVATION_NOTIFICATIONS_MODE=Disabled`.
-En bakgrunnsjobb i API-et setter `IsEnded=1` på utløpte arrangør-aktiviteter hvert minutt (kolonnen `OrganizerId` må finnes).
+Mangler kolonnene i `VenueType`, er det en egen, godkjent databaseendring (additiv, nullbare kolonner, for eksempel `ALTER TABLE VenueType ADD COLUMN Description VARCHAR(500) NULL`; API-et leser dem med `COALESCE`), ikke noe denne utrullingen gjør. `ReservationNotificationOutbox`
+trengs ikke så lenge `RESERVATION_NOTIFICATIONS_MODE=Disabled`. En bakgrunnsjobb i API-et setter `IsEnded=1` på utløpte arrangør-aktiviteter hvert minutt (kolonnen `OrganizerId` finnes, bevist over).
 
 ## 12. Rollback
 
@@ -237,7 +253,7 @@ Ingen eksisterende ressurs er endret, så å rulle tilbake er å fjerne det nye.
 
 - Hemmelighetene i §4 er ikke opprettet (krever et menneske med tilgang til det private hvelvet).
 - Plattformens Key Vault-referanser løses ikke mot hvelvet for appene på planen (§6); årsaken (VnetProxy) er ikke funnet. Appene her er bygget for å klare seg uten dem. Skulle plattformen rettes senere, er det ingen endring å gjøre.
-- Tabellen `VenueType` er ikke verifisert i produksjonsdatabasen (§11); uten den feiler Studios registrering og profil.
+- Seks av ti kolonner i `VenueType` og noen `OrganizersTable`-kolonner er ikke bevist (§11); mangler de, feiler Studios sider. Den dype helsesjekken viser det som `schema` etter utrulling, og SQL-en i §11 avgjør det før.
 - Eier-trinnene (§3 trinn 4) og GitHub-oppsettet (§7) krever personer med de rettighetene; gaten, miljøreglene og det manuelle utløseren er laget for det.
 - Studio og API-et må ha samme `STUDIO_REQUIRE_EMAIL`. Verdien er `false` til Resend er klart (verifisert avsenderdomene for `invi.lol`, `RESEND_API_KEY`, `STUDIO_EMAIL_FROM`); da settes den til `true` i begge i samme endring.
 - MySQL-brukeren er administratoren. En egen bruker med bare de rettighetene API-et trenger er bedre (MySQL-brukere ligger utenfor ARM).
