@@ -1,6 +1,6 @@
 # Sjekkliste: utrulling av Studio og onboarding-API-et, søndag 18. oktober 2026
 
-**Status 2026-10-16 (kveld): ingenting er rullet ut.** Ingen Azure-skriving, ingen DNS-endring, ingen databaseendring, ingen hemmelighet opprettet, ingen merge. De tre PR-ene er åpne og alt under er forberedt og testet lokalt og mot live Azure *kun med lesing*
+**Status 2026-10-17: ingenting er rullet ut.** Ingen Azure-skriving, ingen DNS-endring, ingen databaseendring, ingen hemmelighet opprettet, ingen merge. De tre PR-ene er åpne og alt under er forberedt og testet lokalt og mot live Azure *kun med lesing*
 (gaten: `onboardingapi`, `studio` og `main` PASS). Ingenting under skjer før søndag og uten **eksplisitt, skriftlig godkjenning per trinn** fra Nicolai (og Karl der det står). Verdier til hemmeligheter står aldri i denne siden og skal aldri limes inn i chat, Git eller en fil.
 
 Hver rad har: hvem, kommando, forventet resultat, stoppkriterium og tilbakerulling. Bakgrunn og bevis: [`studio-and-onboarding-api.md`](studio-and-onboarding-api.md) («runbooken»), gaten: [`deploy-safety-gate.md`](deploy-safety-gate.md). Databasen: `docs/launch-database.md` i API-repoet.
@@ -17,7 +17,7 @@ SUB=563af248-8461-42a9-8121-e350e48ca7b6; RG=rg-invi-prod-swc-001; API=app-invi-
 
 | # | Spørsmål | Hva som skjer uten svar | Blokkerer |
 |---|---|---|---|
-| D1 | **Skal klubber (typer som ikke er «Venue») vises i appen uten kommende aktiviteter?** I produksjon i dag vises alle aktive arrangører med posisjon. Data API `staging` og appen på `master` (c9f0f64) skjuler klubber mellom arrangementene sine. Karl ønsker at arrangører skal vises uten publiserte aktiviteter | ingenting endres i produksjon nå; regelen kommer med neste Data API-/appslipp. Kodepunkt og testplan: `docs/organizer-id.md` | offentlig lansering for klubber |
+| D1 | **Bekreft visning av klubber uten kommende aktiviteter.** Produksjons-Data API-et returnerer allerede alle aktive arrangører med posisjon. Data API `staging` og mobilappen skjuler klubber mellom arrangementene; avgrensede rettelser er forberedt på grenene `fix/show-organizers-without-events` i begge repoer. Karl må godkjenne regelen og mobilversjonen må ut før dette kan verifiseres hos kunder | eksisterende produksjon er uendret til egne slipp | offentlig lansering for klubber |
 | D2 | **Hvilken bruker er `ADMIN_ACTIVITY_CREATOR_ID`?** Admin-repoet sier selv at den er «uavklart»; det skal være en egen, ikke-innloggbar systembruker (ikke en person, aldri Nicolai eller Karl). Finnes den ikke i produksjon må den lages (Karl/DB-person, se `launch-database.md` M5). Jeg setter ikke en ID og gjetter ikke på 657 | API-et nekter å opprette aktiviteter (503) og dyp helsesjekk sier `activity-creator`. Studio kan ikke brukes til kamper/kalender | teknisk og offentlig |
 | D3 | **Er Stripe klart søndag?** Krever: live-konto, produktet «Merch» (250 kr/mnd inkl. mva.), webhook, nøkler i hvelvet, innstillinger i Bicep (se `docs/billing.md`, «Opening payment»). Pris-ID-er lager bare Karl | Studio kjører **stengt**: ingen kan betale ennå, og bare fritatte arrangører kan publisere merch/booking. Å lage kontoer, profil og innhold er gratis | offentlig lansering for betalende kunder |
 | D4 | **Prisen for booking** («La folk booke!» viser 499 kr som plassholder i `plans.ts`) | booking kan ikke selges; bare fritatte kan slå på bookingressurser | betalende booking |
@@ -94,10 +94,11 @@ Forventet for hver: `== GATE PASS`, `0 blocking, 9 allowed by manifest`, what-if
 
 ### F4. Databaseforhåndssjekk (kun lesing; DB-person med nettverksvei)
 
-Hvelvet og MySQL er private. Start maskinen bare mens du jobber og deallokér den rett etterpå: `az vm start -g $RG -n vm-db-migration-temp` … `az vm deallocate -g $RG -n vm-db-migration-temp` (offentlig IP; hvelv-bred Secrets Officer, så den skal ikke stå på).
+Hvelvet og MySQL er private. Start maskinen bare mens du jobber og deallokér den rett etterpå: `az vm start -g $RG -n vm-db-migration-temp` … `az vm deallocate -g $RG -n vm-db-migration-temp` (offentlig IP; hvelv-bred Secrets Officer, så den skal ikke stå på). Kjør MySQL-kommandoene på denne VNet-verten etter at de gjennomgåtte SQL-filene er kopiert dit i `~/invi/cetchapp-onboarding-api/Migrations`; mappen finnes ikke automatisk på VM-en.
 
 ```bash
-mysql --host=mysql-invi-prod-001.mysql.database.azure.com --user=inviadmin --password --ssl-mode=REQUIRED --database=invi --table < Migrations/preflight-readonly.sql
+cd ~/invi
+mysql --host=mysql-invi-prod-001.mysql.database.azure.com --user=inviadmin --password --ssl-mode=REQUIRED --database=invi --table < cetchapp-onboarding-api/Migrations/preflight-readonly.sql
 ```
 
 (Sett `SET @creator = <ID>;` først når D2 er avgjort. Passordet spørres om og står aldri i en fil.) Les hvert resultat mot «Expect»-linjen i filen. Forventet nå: manglende tabeller = akkurat `OrganizerMerch`, `OrganizerTicketSale`, `StudioBillingExemption`;
@@ -119,10 +120,11 @@ Rollback ved gjenoppretting lager en *ny* server og krever nye innstillinger i a
 
 ### 1. Databasen: M1, evt. M4 og M5 (DB-person; før API-et startes)
 
-Bare det forhåndssjekken viste at trengs. Alt er additivt og kjørt og testet mot en lokal MySQL (`launch-db`, 42 sjekker).
+Bare det forhåndssjekken viste at trengs. Alt er additivt og kjørt og testet mot en lokal MySQL (`launch-db`, 45 sjekker).
 
 ```bash
-mysql --host=mysql-invi-prod-001.mysql.database.azure.com --user=inviadmin --password --ssl-mode=REQUIRED --database=invi --table < Migrations/20261018_02_activity_recurrence.sql   # M1: fire kolonner, ALGORITHM=INSTANT, kan kjøres to ganger
+cd ~/invi
+mysql --host=mysql-invi-prod-001.mysql.database.azure.com --user=inviadmin --password --ssl-mode=REQUIRED --database=invi --table < cetchapp-onboarding-api/Migrations/20261018_02_activity_recurrence.sql   # M1: fire kolonner, ALGORITHM=INSTANT, kan kjøres to ganger
 ```
 
 Så kjør forhåndssjekken på nytt: ingen manglende kolonner. **Stopp** hvis ALTER svarer at INSTANT ikke er mulig (da endres ingenting; ikke fall tilbake til en tabellkopi uten ny avgjørelse), eller hvis noe i Invi-appen eller Data API-et endrer oppførsel (5xx).
