@@ -82,6 +82,10 @@ param webDraftsTrustCloudflareConnectingIp = false
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
+// UserId of the 'Invi Activities' system user (Provider='System') created by the approved Core DB migration.
+// Zero would leave ADMIN_ACTIVITY_CREATOR_ID unset. Changing it restarts only the Data API on the next main deploy.
+param dataApiActivityCreatorId = 1636
+
 // api.cetchapp.com is bound to the Data API with the Cloudflare Origin CA certificate that was uploaded by hand.
 param dataApiCustomDomain = 'api.cetchapp.com'
 param dataApiCertificateName = 'api-cetchapp-com-cloudflare-origin'

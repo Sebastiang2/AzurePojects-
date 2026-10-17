@@ -44,6 +44,10 @@ param webDraftsRequireCaptcha bool = true
 param webDraftsTrustCloudflareConnectingIp bool = false
 param placeSuggestionsEnabled bool = false
 
+@description('Verified UserTable.UserId for editorial activities in the Data API. Zero leaves ADMIN_ACTIVITY_CREATOR_ID unset.')
+@minValue(0)
+param dataApiActivityCreatorId int = 0
+
 @description('Custom domain bound to the Data API. Empty = no binding is managed here.')
 param dataApiCustomDomain string = ''
 
@@ -183,7 +187,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   parent: dataApi
   name: 'appsettings'
 
-  properties: {
+  properties: union({
    ASPNETCORE_ENVIRONMENT: 'Production'
     Urls: 'http://*:8080'
 
@@ -249,7 +253,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // Literal App Settings in production today, not Key Vault references.
     RevenueCat__SecretApiKey: revenueCatSecretApiKey
     RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
-  }
+  }, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
 }
 
 // intergration

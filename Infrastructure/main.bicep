@@ -109,6 +109,11 @@ param webDraftsTrustCloudflareConnectingIp bool = false
 // "Foreslå et sted" needs BOTH webDraftsEnabled and this one (Data API AND-gate). Off unless set.
 param placeSuggestionsEnabled bool = false
 
+// UserTable.UserId of the dedicated, verified Invi Activities system user.
+// Zero preserves today's configuration; set the real id only after the DB check.
+@minValue(0)
+param dataApiActivityCreatorId int = 0
+
 @description('Custom domain bound to the Data API (served through Cloudflare). Empty = no binding is managed by this template.')
 param dataApiCustomDomain string = ''
 
@@ -299,6 +304,7 @@ module appService 'modules/appservice.bicep' = {
     webDraftsRequireCaptcha: webDraftsRequireCaptcha
     webDraftsTrustCloudflareConnectingIp: webDraftsTrustCloudflareConnectingIp
     placeSuggestionsEnabled: placeSuggestionsEnabled
+    dataApiActivityCreatorId: dataApiActivityCreatorId
     dataApiCustomDomain: dataApiCustomDomain
     dataApiCertificateName: dataApiCertificateName
 
