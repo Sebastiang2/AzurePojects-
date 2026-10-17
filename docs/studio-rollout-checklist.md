@@ -27,6 +27,7 @@ SUB=563af248-8461-42a9-8121-e350e48ca7b6; RG=rg-invi-prod-swc-001; API=app-invi-
 | D8 | Hvem er på vakt søndag, og hvem kan stoppe appene (rollback-myndighet)? | ingen | teknisk |
 | D9 | `VenueType`/`OrganizersTable` mangler kolonner (hvis forhåndssjekken viser det): Karl leverer ALTER-setningene. Jeg har ikke gjettet dem | NO-GO til de er på plass | teknisk |
 | D10 | Skal Data API-et få `ADMIN_ACTIVITY_CREATOR_ID` i **samme søndag**? (egen endring + omstart av Data API-et) | adminpanelets redaksjonelle publisering gir 503 (som i dag) | nei for Studio |
+| D12 | **Ressurstype-katalogen (`ResourceTable`).** Data API-et lager tabellen *tom*, og ingen kode i noe repo fyller den (i testdatabasen ble den fylt for hånd). Uten rader kan ingen legge til en bookingressurs. Studio kjenner disse typene: Bowling lane, Dining table, Private sauna, Tennis court, Individual seat, Gaming station, Pool table, Tennis racket. Karl leverer radene (kategori Space/Seat/Onsite + navn) fra testdatabasen; jeg gjetter ikke kategoriene | booking kan ikke tas i bruk; merch, aktiviteter og profil virker | booking (P13) |
 | D11 | **Synlighet i appen.** Publisert merch og «Selges på stadion» vises i Invi-appen først når Data API-et i produksjon har koden (i dag bare på `staging`, commit f934035 og 6a33206) og en appversjon som viser den er ute (appen på `master` har den; butikkene hadde 3.3.22 sist sjekket 2026-10-07). Skal kunder betale for merch før den er synlig? | Studio virker, men en klubb som betaler 250 kr/mnd ser ikke varene i appen | betaling for merch (anbefalt NO-GO til det er synlig) |
 
 ## B. GO / NO-GO
@@ -40,7 +41,7 @@ Alle må være oppfylt. Ett «nei» = NO-GO, og ingenting rulles ut.
 | T1 | De tre PR-ene er gjennomgått og grønne (`build`/`validate`), ikke `CONFLICTING` | `gh pr view` viser `MERGEABLE`, CI grønn |
 | T2 | Effekten av merge er kjent: **merge deployer ingenting** (alle tre workflowene deployer bare ved manuell kjøring på `main` med `deploy=true`, og bare når `AZURE_CLIENT_ID` finnes) | `grep -n workflow_dispatch .github/workflows/deploy-azure.yml` i begge app-repoene; IaC-repoet bygger bare |
 | T3 | Gaten gir **PASS** for `onboardingapi` og `studio` (og `main` hvis Data API-endringen i trinn 11 skal inn), sist kjørt på det som faktisk er merget | `bash Infrastructure/scripts/deploy.sh --deployment <navn> --dry-run` |
-| T4 | **Databaseforhåndssjekken er kjørt** (kun lesing) og gir ingen uforklart NO-GO: bare de tre tabellene API-et lager mangler, ingen manglende kolonner (ellers M1/M4 først), `OrganizerId` er `int` InnoDB | `Migrations/preflight-readonly.sql` (trinn F4) |
+| T4 | **Databaseforhåndssjekken er kjørt** (kun lesing) og gir ingen uforklart NO-GO: bare de tre tabellene API-et lager mangler, ingen manglende kolonner (ellers M1/M4 først), `OrganizerId` er `int` InnoDB, og `VenueType` og `CategoryTable` har rader | `Migrations/preflight-readonly.sql` (trinn F4) |
 | T5 | D2 er avgjort **og verifisert i produksjonsdatabasen** (bruker finnes, ingen passord, ikke administrator, ingen e-post/telefon, eier ingen aktiviteter) | preflight-setning 7 |
 | T6 | Backup-punkt notert (tidspunkt UTC) eller tatt (`az mysql flexible-server backup create`) | trinn F5 |
 | T7 | Personene finnes: Contributor (kjører Bicep), **Owner** (rolletildelinger), hvelv-nettverksvei + Secrets Officer (hemmeligheter), repo-administrator (miljø og variabler), DB-person (MySQL fra VNet) | navn skrevet inn her før start |
@@ -64,6 +65,7 @@ Alle må være oppfylt etter at GO-T er gjennomført og trinn 1-12 er grønne. E
 | P9 | Rollback er gått gjennom (hvem stopper hva, og hvordan): se E | to personer har lest E |
 | P10 | Admin kan godkjenne selvregistrerte og utstede innlogginger (D7: `IsActive=false` til godkjent) | testet med testarrangøren |
 | P11 | Karl har sagt ja til å åpne (skriftlig) | meldingen lagres |
+| P13 | **Hvis booking tilbys:** ressurstype-katalogen er fylt (D12, preflight-setning 12) og en testarrangør kan legge til et bord og se det i listen | trinn 10 |
 | P12 | **Det kunden betaler for er synlig i appen** (D11): produksjons-Data API-et har merch-/billettsalg-koden og appversjonen i butikkene viser den. Ellers tas det ikke betalt for merch (holdes stengt), og kundene får vite det | `gh run list --repo CetchApp/invi-data-api --workflow main_app-invi-data-api-prod-001.yml --limit 1 --json headSha`, så `git merge-base --is-ancestor f934035 <headSha>`; appversjon i butikkene |
 
 ## C. Før start (lørdag og søndag morgen; kun lesing og forberedelser)
@@ -100,7 +102,7 @@ mysql --host=mysql-invi-prod-001.mysql.database.azure.com --user=inviadmin --pas
 
 (Sett `SET @creator = <ID>;` først når D2 er avgjort. Passordet spørres om og står aldri i en fil.) Les hvert resultat mot «Expect»-linjen i filen. Forventet nå: manglende tabeller = akkurat `OrganizerMerch`, `OrganizerTicketSale`, `StudioBillingExemption`;
 manglende kolonner = sannsynligvis de fire `ActivityTable.Recurrence*`/`Recurring` (migrering M1), og kanskje noen i `VenueType`/`OrganizersTable` (D9). **Dette er et funn:** produksjonens Data API (`main`) lager ikke gjentakelseskolonnene på `ActivityTable`, og uten dem feiler hver aktivitet Studio lager,
-og hele kalenderen. Resultatet avgjør om M1/M4/M5 trengs. Stopp: en manglende tabell utenom de tre, `OrganizerId` som ikke er `int` InnoDB, eller en skaper som er en person.
+og hele kalenderen. Setning 12 viser katalogene: `VenueType` og `CategoryTable` må ha rader, og `ResourceTable` (ressurstypene) er sannsynligvis tom (D12/M6). Resultatet avgjør om M1/M4/M5/M6 trengs. Stopp: en manglende tabell utenom de tre, `OrganizerId` som ikke er `int` InnoDB, eller en skaper som er en person.
 
 ### F5. Backup-punkt
 
@@ -234,7 +236,7 @@ az monitor log-analytics query -w $LAW -o table --analytics-query "
   | project TimeGenerated, app = tostring(split(tolower(_ResourceId), '/')[-1]), ResultDescription | order by TimeGenerated desc"
 ```
 
-Forventet (forsinkelse på noen minutter): `key-vault: loaded 2 secret(s) into the environment: ONBOARDING_DB_PASSWORD, STUDIO_API_KEY` for API-et og `… STUDIO_API_KEY, STUDIO_SESSION_SECRET` for Studio; **`readiness: ready=true activity-creator=ok(<ID>) missing-tables=[] missing-columns=[] warnings=[]`**;
+Forventet (forsinkelse på noen minutter): `key-vault: loaded 2 secret(s) into the environment: ONBOARDING_DB_PASSWORD, STUDIO_API_KEY` for API-et og `… STUDIO_API_KEY, STUDIO_SESSION_SECRET` for Studio; **`readiness: ready=true activity-creator=ok(<ID>) missing-tables=[] missing-columns=[] empty-tables=[] warnings=[]`** (en advarsel om `ResourceTable` betyr bare at booking ikke kan tas i bruk ennå, D12);
 ingen `could not load` og ingen `Could not create`. Ikke `ready=true` eller en advarsel (`can log in`, `administrator`): les linjen, rett det den sier (manglende kolonne → M1/M4; `activity-creator=not-configured` → trinn 2), og start API-et på nytt. **Gå ikke videre til DNS før dyp helsesjekk gir 200.**
 
 ```bash
@@ -264,6 +266,7 @@ Forutsetning: en testarrangør med Studio-innlogging, opprettet i adminpanelet, 
 |---|---|
 | Logg inn i Studio på standardadressen; fyll ut profil | virker; testarrangøren vises ikke i appen (skjult) |
 | Lag et utkast til en aktivitet; valider | OK; utkastet er bare synlig i Studio |
+| Åpne ressurssiden og legg til et bord (hvis booking tilbys) | ressurstypene finnes (D12); ressursen lagres **av** |
 | Legg til en merch-vare; sett opp en bookingressurs | lagres; vare **ikke** utgitt; ressurs **av** |
 | Trykk «Legg ut for brukere!» / «La folk booke!» som **ikke fritatt** | 402 og betalingsdialog; «Betal» gir 503 «Betaling er ikke åpnet ennå» (stengt) eller Stripe (D3) |
 | Fritak: DB-personen gir testarrangøren fritak (trinn 9), vent ett minutt | publisering virker; trekk fritaket tilbake, vent ett minutt: nektes igjen |
