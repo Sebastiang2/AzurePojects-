@@ -529,7 +529,8 @@
       ],
       "allowedNewSettings": {
         "app-invi-data-api-prod-001": [
-          "PlaceSuggestions__Enabled"
+          "PlaceSuggestions__Enabled",
+          "ADMIN_ACTIVITY_CREATOR_ID"
         ]
       },
       "allowedRemovedSettings": {},
