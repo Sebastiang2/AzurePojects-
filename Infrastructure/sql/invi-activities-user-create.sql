@@ -1,4 +1,6 @@
--- Run ONLY after reviewing SHOW CREATE TABLE UserTable from the read-only preflight.
+-- Run ONLY after the read-only preflight and invi-activities-user-provider-system.sql
+-- report provider_system_enabled = 1. This script refuses to create a user until
+-- the dedicated System Provider enum value exists.
 -- This file intentionally leaves the transaction OPEN. Inspect the final row and
 -- COMMIT manually only when exactly one clean identity is shown; otherwise ROLLBACK.
 -- Re-running after COMMIT is idempotent: an existing name prevents another insert.
@@ -15,7 +17,15 @@ SELECT
   '', UTC_TIMESTAMP(), '', UTC_TIMESTAMP(),
   1, 0, 0, 0,
   '', '', '', 'System', NULL
-WHERE NOT EXISTS (SELECT 1 FROM UserTable WHERE DisplayName = 'Invi Activities');
+WHERE NOT EXISTS (SELECT 1 FROM UserTable WHERE DisplayName = 'Invi Activities')
+  AND EXISTS (
+    SELECT 1
+    FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'UserTable'
+      AND COLUMN_NAME = 'Provider'
+      AND COLUMN_TYPE LIKE '%''System''%'
+  );
 
 SELECT ROW_COUNT() AS inserted_rows;
 SELECT UserId, DisplayName, Provider,
