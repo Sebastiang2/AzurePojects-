@@ -82,6 +82,10 @@ param webDraftsTrustCloudflareConnectingIp = false
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
+// Replace zero with the UserId returned by the approved Core DB migration.
+// This setting restarts only the Data API when the main template is deployed.
+param dataApiActivityCreatorId = 0
+
 // api.cetchapp.com is bound to the Data API with the Cloudflare Origin CA certificate that was uploaded by hand.
 param dataApiCustomDomain = 'api.cetchapp.com'
 param dataApiCertificateName = 'api-cetchapp-com-cloudflare-origin'
