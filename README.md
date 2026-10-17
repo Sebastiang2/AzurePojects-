@@ -60,6 +60,20 @@ Produksjonsmiljøet består av følgende komponenter:
   - URL: `https://admin.cetchapp.com`
   - App role: `Invi.Admin` (kreves for tilgang)
 
+### Invi Studio og onboarding-API
+- **Studio**: `app-invi-studio-prod-001` (Linux, Node 24 LTS, Next.js standalone, `node server.js`) på den delte planen. URL: `https://studio.invi.lol`.
+  Studio er en Node-server (server-rendrede sider, route handlers og `proxy.ts`), ikke et statisk nettsted, og kan derfor ikke ligge på Static Web Apps.
+- **Onboarding-API**: `app-invi-onboarding-api-prod-001` (Linux, .NET 10) på den delte planen. Ingen eget domene: bare Studio-serveren kaller det, på
+  `https://app-invi-onboarding-api-prod-001.azurewebsites.net`. API-et låses i kode (`STUDIO_SERVER_ONLY=true`, `ADMIN_ROUTES_ENABLED=false`):
+  alle ruter unntatt `/api/health` krever Studio-nøkkelen.
+- Begge: VNet-integrasjon med Route All (privat MySQL og privat Key Vault), system-assigned identitet, HTTPS-only, FTP og basic SCM av, egen Application
+  Insights og diagnostikk til `log-invi-prod-001`, og en bruker-tildelt identitet (`id-gha-invi-studio-prod-001`, `id-gha-invi-onboarding-api-prod-001`) med
+  federated credential for GitHub-miljøet `production` i appens eget repo (OIDC, ingen hemmelighet). Ingen ny plan, ingen ny database.
+- **Hemmeligheter** leses av appene selv fra Key Vault ved oppstart (plattformens Key Vault-referanser løses ikke mot dette hvelvet, som API-ene og admin-appen
+  også har funnet), med `Key Vault Secrets User` på den ene hemmeligheten (ikke hvelvet): Studio leser `studio-api-key` og `studio-session-secret`, API-et leser
+  `studio-api-key` og `database-password`. Bicep gir appen bare `KEY_VAULT_URI` og `KEY_VAULT_MAP`, som ikke er hemmelige.
+- Fremgangsmåte, rekkefølge, DNS, rollback og åpne punkter: [docs/studio-and-onboarding-api.md](docs/studio-and-onboarding-api.md); utrullingen trinn for trinn med kommandoer: [docs/studio-rollout-checklist.md](docs/studio-rollout-checklist.md).
+
 ### Static Web App
 - **Navn**: `swa-invi-web-prod-001`
 - **Location**: `eastus2` (Static Web Apps er ikke tilgjengelig i Sweden Central)
@@ -108,12 +122,21 @@ Infrastructure/
 │   ├── adminapp.bicep          # Admin web app (Next.js)
 │   ├── adminapp-domain.bicep   # Custom domain for admin app
 │   ├── adminapp-rbac.bicep     # RBAC for admin app Key Vault tilgang
+│   ├── webapp.bicep            # Generisk app på den delte planen (Studio og onboarding-API) + deploy-identitet for GitHub
+│   ├── webapp-domain.bicep     # Custom domain og managed sertifikat for en webapp (to trinn)
+│   ├── studio-platform-rbac.bicep  # Key Vault-tilgang per hemmelighet + Website Contributor for deploy-identitetene (krever Owner)
+│   ├── rbac-site-contributor.bicep # Helper: Website Contributor på én app
 │   └── rbac-keyvault-secret-scope.bicep  # Helper for Key Vault RBAC
 ├── environments/               # Parameter-filer per miljø
 │   ├── prod.bicepparam         # Hovedparametere for prod (main.bicep)
 │   ├── prod.adminapp.bicepparam  # Admin app deployment (A)
 │   ├── prod.adminapp.rbac-owner.bicepparam  # Admin app RBAC (B, krever Owner)
 │   ├── prod.adminapp.domain-admin-cetchapp-com.bicepparam  # Admin domain (C)
+│   ├── prod.onboardingapi.bicepparam     # Onboarding-API (Contributor)
+│   ├── prod.studio.bicepparam            # Studio (Contributor)
+│   ├── prod.studio-platform-rbac.bicepparam  # Tilgang for Studio og onboarding-API (krever Owner)
+│   ├── prod.studio.domain-studio-invi-lol.bicepparam      # studio.invi.lol, trinn 1: binding uten TLS
+│   ├── prod.studio.domain-studio-invi-lol-tls.bicepparam  # studio.invi.lol, trinn 2: managed sertifikat
 │   ├── prod.staticwebapp-web.bicepparam  # Static Web App (uten domener)
 │   ├── prod.staticwebapp-web.domain-invi-lol.bicepparam
 │   ├── prod.staticwebapp-web.domain-www-invi-lol.bicepparam
@@ -125,6 +148,8 @@ Infrastructure/
     ├── validate.sh             # Bygg, lint og statiske kontroller (offline)
     └── gate/                   # Analysemotor, oppsamler, skrubbere og tester for gaten
 docs/
+├── studio-and-onboarding-api.md  # Studio og onboarding-API: arkitektur, rekkefølge, hemmeligheter, DNS, rollback
+├── studio-rollout-checklist.md   # Studio og onboarding-API: sjekkliste med kommandoer, forventet resultat, stoppkriterier og rollback per trinn
 ├── deploy-safety-gate.md       # Hva gaten kontrollerer og ikke kan kontrollere
 ├── deploy-runbook.md           # Utrulling og rollback, steg for steg
 └── iac-avstemming.md           # Avstemming av Bicep mot produksjon
@@ -177,6 +202,10 @@ Nøkler (`--deployment`) og hva hver får endre står i `Infrastructure/safety/m
 | `adminapp-a` | `prod.adminapp.bicepparam` | admin-appen (Contributor) |
 | `adminapp-b-rbac` | `prod.adminapp.rbac-owner.bicepparam` | Key Vault-tilgang for admin (krever Owner) |
 | `adminapp-c-domain` | `prod.adminapp.domain-admin-cetchapp-com.bicepparam` | domene og TLS for admin |
+| `onboardingapi` | `prod.onboardingapi.bicepparam` | onboarding-API: app, Application Insights, innstillinger, diagnostikk, deploy-identitet (Contributor) |
+| `studio` | `prod.studio.bicepparam` | Studio: som over (Contributor) |
+| `studio-platform-rbac` | `prod.studio-platform-rbac.bicepparam` | Key Vault-tilgang per hemmelighet og Website Contributor for deploy-identitetene (krever Owner) |
+| `studio-domain`, `studio-domain-tls` | `prod.studio.domain-studio-invi-lol[-tls].bicepparam` | `studio.invi.lol`: binding, deretter managed sertifikat |
 | `swa-web` | `prod.staticwebapp-web.bicepparam` | Static Web App (uten domener) |
 | `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol` | `prod.staticwebapp-web.domain-*.bicepparam` | ett domene per utrulling |
 
@@ -248,6 +277,9 @@ CI/CD bruker federated credentials med GitHub OIDC:
 
 - **Auth API**: `id-gha-invi-auth-api-prod-001`
 - **Data API**: `id-gha-invi-data-api-prod-001`
+- **Admin app**: `id-gha-invi-admin-prod-001`
+- **Studio**: `id-gha-invi-studio-prod-001` (opprettet av `webapp.bicep`; subject `repo:CetchApp/invi-studio:environment:production`)
+- **Onboarding-API**: `id-gha-invi-onboarding-api-prod-001` (opprettet av `webapp.bicep`; subject `repo:CetchApp/cetchapp-onboarding-api:environment:production`)
 - Rolle: Website Contributor (på app-nivå, ikke subscription-nivå)
 
 Identitetene og credentials er opprettet utenfor Bicep. `deploy.sh` oppretter dem ikke lenger; sikkerhetsgaten leser dem og
@@ -259,6 +291,7 @@ stopper ved en ny eller endret tildeling/credential som ikke er gjennomgått i m
 - `https://api.cetchapp.com` – Data API
 - `https://admin.cetchapp.com` – Admin portal (Easy Auth-beskyttet)
 - `https://app.cetchapp.com` – Static Web App (deep links, invites)
+- `https://studio.invi.lol` – Invi Studio (App Service; DNS hos Namecheap, satt manuelt)
 - `https://invi.lol` – Produkt landing page (Static Web App)
 - `https://www.invi.lol` – Redirect til invi.lol
 
@@ -268,6 +301,8 @@ stopper ved en ny eller endret tildeling/credential som ikke er gjennomgått i m
 - Auth API default hostname: `app-invi-auth-api-prod-001.azurewebsites.net`
 - Data API default hostname: `app-invi-data-api-prod-001.azurewebsites.net`
 - Admin app default hostname: `app-invi-admin-prod-001.azurewebsites.net`
+- Studio default hostname: `app-invi-studio-prod-001.azurewebsites.net`
+- Onboarding-API default hostname: `app-invi-onboarding-api-prod-001.azurewebsites.net` (brukes av Studio; ingen eget domene)
 
 ## Hva er IKKE i dette repoet / Out of Scope
 
@@ -276,10 +311,12 @@ Dette repoet inneholder **kun infrastrukturkode**. Følgende er **ikke** inklude
 1. **Applikasjonskode** – lever i separate repositories under CetchApp-organisasjonen:
    - Auth API: `CetchApp/cetchapp-auth-api`
    - Data API: `CetchApp/cetchapp-data-api`
-   - Admin App: (separat repo)
+   - Admin App: `CetchApp/cetchapp-onboarding-admin`
+   - Studio: `CetchApp/invi-studio`
+   - Onboarding-API: `CetchApp/cetchapp-onboarding-api`
    - Web App: `CetchApp/Cetchapp-web`
 
-2. **CI/CD pipelines** – GitHub Actions workflows lever i app-repoene
+2. **CI/CD pipelines for applikasjonene** – GitHub Actions workflows lever i app-repoene. Dette repoet har bare `iac-validate.yml`, som validerer Bicep offline (uten Azure-tilgang); utrulling skjer aldri derfra, bare med `deploy.sh` bak gaten
 
 3. **Secrets og sertifikater** – lagres i Key Vault eller miljøvariabler
 

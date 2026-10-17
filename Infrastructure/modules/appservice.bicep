@@ -44,6 +44,10 @@ param webDraftsRequireCaptcha bool = true
 param webDraftsTrustCloudflareConnectingIp bool = false
 param placeSuggestionsEnabled bool = false
 
+@description('The user (UserTable.UserId) that owns editorial activities the admin panel publishes: ADMIN_ACTIVITY_CREATOR_ID on the Data API. 0 = not set (as production is today): those routes answer 503. Set it to the same verified system user as the onboarding API (activityCreatorId in prod.onboardingapi.bicepparam), in one reviewed change.')
+@minValue(0)
+param dataApiActivityCreatorId int = 0
+
 @description('Custom domain bound to the Data API. Empty = no binding is managed here.')
 param dataApiCustomDomain string = ''
 
@@ -183,7 +187,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   parent: dataApi
   name: 'appsettings'
 
-  properties: {
+  properties: union({
    ASPNETCORE_ENVIRONMENT: 'Production'
     Urls: 'http://*:8080'
 
@@ -249,7 +253,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // Literal App Settings in production today, not Key Vault references.
     RevenueCat__SecretApiKey: revenueCatSecretApiKey
     RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
-  }
+  }, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
 }
 
 // intergration

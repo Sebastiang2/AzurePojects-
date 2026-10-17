@@ -60,7 +60,26 @@ STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 call         account               az account show --subscription "$SUB" --query "{id:id, tenantId:tenantId, name:name, state:state}" -o json
 call         resources             az resource list --subscription "$SUB" -o json
 
+# An app that is not in the resource list does not exist yet (a deployment that CREATES it, for example a new App Service). It has nothing to
+# read, and asking for it would make every call fail and the gate stop on "missing evidence". Whether the app may be created is judged by the
+# what-if rules and the manifest (WHATIF-CREATE, touches, allowedCreates), not here. Fail-closed: only a resource list that was read and parsed
+# can say that an app is absent; a missing or unreadable list never does (its own call is recorded as failed above).
+app_is_absent() {
+  node -e '
+    const fs = require("fs");
+    let list;
+    try { list = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(1); }
+    if (!Array.isArray(list)) process.exit(1);
+    const found = list.some((r) => /^microsoft\.web\/sites$/i.test(String(r.type)) && String(r.name).toLowerCase() === process.argv[2].toLowerCase());
+    process.exit(found ? 1 : 0);
+  ' "$(native "$OUT/resources.json")" "$1"
+}
+
 for app in "${APPS[@]}"; do
+  if app_is_absent "$app"; then
+    echo "   $app does not exist yet: nothing to read"
+    continue
+  fi
   site="$REST/Microsoft.Web/sites/$app"
   call         "apps/$app.show"                   az webapp show -g "$RG" -n "$app" --subscription "$SUB" -o json
   call         "apps/$app.config"                 az webapp config show -g "$RG" -n "$app" --subscription "$SUB" -o json

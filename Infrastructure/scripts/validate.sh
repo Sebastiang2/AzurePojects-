@@ -95,11 +95,15 @@ for (const file of fs.readdirSync("environments").filter((f) => f.endsWith(".bic
 // 3. no high-entropy literal that looks like a key in any Bicep or parameter file
 // The key may be the *name* of a secret or a setting (...Name, ...Names, ...SettingName); only values matter.
 const pattern = /\b([A-Za-z_]*(?:password|secret|api[_-]?key|token|connectionstring|sharedaccesskey|accountkey|private[_-]?key)[A-Za-z_]*)['"]?\s*[:=]\s*['"][A-Za-z0-9+\/=_-]{20,}['"]/i;
+// A Key Vault secret NAME in the settingSecretNames maps ("STUDIO_SESSION_SECRET: 'studio-session-secret'") is lower-case words joined by
+// hyphens. That is a name, not a value: a real key has digits or mixed case in it.
+const secretNameShape = /^[a-z]{2,}(?:-[a-z]{2,})+$/;
 const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]);
 for (const file of walk(".").filter((f) => /\.(bicep|bicepparam)$/.test(f))) {
   fs.readFileSync(file, "utf8").split(/\r?\n/).forEach((line, i) => {
     const hit = line.match(pattern);
-    if (hit && !/Names?$/.test(hit[1]) && !/readEnvironmentVariable|@Microsoft\.KeyVault/.test(line)) { console.log(`FAIL  ${file}:${i + 1}: looks like a secret literal`); bad++; }
+    const quoted = /[:=]\s*['"]([A-Za-z0-9+\/=_-]{20,})['"]/.exec(line)?.[1] ?? "";
+    if (hit && !/Names?$/.test(hit[1]) && !secretNameShape.test(quoted) && !/readEnvironmentVariable|@Microsoft\.KeyVault/.test(line)) { console.log(`FAIL  ${file}:${i + 1}: looks like a secret literal`); bad++; }
   });
 }
 if (bad === 0) console.log("ok    secure parameters come from the environment; no secret-like literals");

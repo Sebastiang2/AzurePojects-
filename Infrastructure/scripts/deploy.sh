@@ -4,7 +4,8 @@
 #   Infrastructure/scripts/deploy.sh --deployment <key> [--dry-run] [--allow-non-main]
 #
 #   --deployment  key in Infrastructure/safety/manifest.json: main, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
-#                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol
+#                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol,
+#                 onboardingapi, studio, studio-platform-rbac, studio-domain, studio-domain-tls
 #   --dry-run     rehearsal: runs every check and the gate, prints what would be deployed and every reason a real run would
 #                 stop, and NEVER deploys (it also needs no terminal and tolerates a dirty tree and missing secure parameters,
 #                 which it then reports as blockers)
@@ -222,7 +223,15 @@ else
   exit 1
 fi
 
-for app in $(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(Object.keys(m.apps??{}).join(" "))' "$MANIFEST_N"); do
+# The apps that must be running. An app that another deployment introduces and that does not exist yet is left out (apps.<name>.introducedBy);
+# if the list of sites cannot be read, nothing is left out.
+if EXISTING_SITES="$(az resource list --resource-group "$RG" --subscription "$SUB" --resource-type Microsoft.Web/sites --query "[].name" --output tsv --only-show-errors 2>/dev/null)"; then
+  EXISTING_SITES="$(printf '%s' "$EXISTING_SITES" | tr -d '\r' | tr '\n' ' ')"
+else
+  EXISTING_SITES="*"
+fi
+# shellcheck disable=SC2086
+for app in $(node "$(to_native "$HERE/gate/apps-to-verify.mjs")" "$MANIFEST_N" "$DEPLOYMENT" $EXISTING_SITES); do
   state="$(az webapp show --resource-group "$RG" --name "$app" --subscription "$SUB" --query state --output tsv --only-show-errors 2>/dev/null || echo unknown)"
   echo "App $app: $state"
   [ "$state" = "Running" ] || { echo "ERROR: $app is not running." >&2; exit 1; }

@@ -82,6 +82,11 @@ param webDraftsTrustCloudflareConnectingIp = false
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
+// ADMIN_ACTIVITY_CREATOR_ID on the Data API: the system user that owns editorial activities (the admin panel's publishing and place suggestions answer 503
+// without it). 0 = not set, as production is today; nothing changes until a verified id is put here, together with the same id as activityCreatorId in
+// prod.onboardingapi.bicepparam: one system user per database owns both. Setting it restarts the Data API (an App Setting change): do it in the rollout window.
+param dataApiActivityCreatorId = 0
+
 // api.cetchapp.com is bound to the Data API with the Cloudflare Origin CA certificate that was uploaded by hand.
 param dataApiCustomDomain = 'api.cetchapp.com'
 param dataApiCertificateName = 'api-cetchapp-com-cloudflare-origin'

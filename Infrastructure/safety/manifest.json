@@ -100,6 +100,49 @@
       "secureFeeds": {
         "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET": "ADMIN_ENTRA_CLIENT_SECRET"
       }
+    },
+    "app-invi-onboarding-api-prod-001": {
+      "required": [
+        "ONBOARDING_DB_HOST",
+        "ONBOARDING_DB_PORT",
+        "ONBOARDING_DB_DATABASE",
+        "ONBOARDING_DB_USER",
+        "ONBOARDING_DB_SSL_MODE",
+        "STUDIO_SERVER_ONLY",
+        "ADMIN_ROUTES_ENABLED",
+        "STUDIO_RESOURCES_ENABLED",
+        "STUDIO_REQUIRE_EMAIL",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
+      ],
+      "mustEqual": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "STUDIO_SERVER_ONLY": "true",
+        "ADMIN_ROUTES_ENABLED": "false",
+        "ENABLE_SWAGGER": "false",
+        "STUDIO_RESOURCES_ENABLED": "true",
+        "RESERVATION_NOTIFICATIONS_MODE": "Disabled",
+        "RESERVATION_JOBS_ENABLED": "false",
+        "KEY_VAULT_MAP": "database-password:ONBOARDING_DB_PASSWORD;studio-api-key:STUDIO_API_KEY"
+      },
+      "introducedBy": "onboardingapi"
+    },
+    "app-invi-studio-prod-001": {
+      "required": [
+        "ONBOARDING_API_BASE_URL",
+        "STUDIO_PUBLIC_ORIGIN",
+        "STUDIO_REQUIRE_EMAIL",
+        "STUDIO_ENVIRONMENT",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
+      ],
+      "mustEqual": {
+        "NODE_ENV": "production",
+        "STUDIO_ENVIRONMENT": "production",
+        "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
+        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
+      },
+      "introducedBy": "studio"
     }
   },
   "noise": [
@@ -465,6 +508,18 @@
           "subject": "repo:CetchApp/cetchapp-onboarding-admin:environment:production",
           "status": "active"
         }
+      },
+      "id-gha-invi-onboarding-api-prod-001": {
+        "github-production": {
+          "subject": "repo:CetchApp/cetchapp-onboarding-api:environment:production",
+          "status": "active"
+        }
+      },
+      "id-gha-invi-studio-prod-001": {
+        "github-production": {
+          "subject": "repo:CetchApp/invi-studio:environment:production",
+          "status": "active"
+        }
       }
     }
   },
@@ -744,6 +799,307 @@
         {
           "type": "Microsoft.Web/staticSites/customDomains",
           "name": "swa-invi-web-prod-001/www.invi.lol"
+        }
+      ]
+    },
+    "onboardingapi": {
+      "description": "Onboarding API (ASP.NET): site, Application Insights, settings, diagnostics and its GitHub deploy identity with the federated credential. Contributor is enough",
+      "template": "Infrastructure/modules/webapp.bicep",
+      "parameters": "Infrastructure/environments/prod.onboardingapi.bicepparam",
+      "deploymentName": "invi-prod-onboardingapi-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-onboarding-api-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-onboarding-api-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-onboarding-api-prod-001/appsettings",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-onboarding-api-prod-001/ftp",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-onboarding-api-prod-001/scm",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-onboarding-api-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-onboarding-api-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-onboarding-api-prod-001/github-production",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [
+        {
+          "id": "R-ONBOARDING-KEY",
+          "text": "In production the API is protected by code (STUDIO_SERVER_ONLY, ADMIN_ROUTES_ENABLED=false), not by the network: it is reachable from the internet and answers 401/503 to every caller without the Studio key. The gate sees the settings, not the code that is deployed later; the reasons are in the API repository."
+        },
+        {
+          "id": "R-KV-STARTUP-LOAD",
+          "text": "The database password and the Studio key are read from Key Vault by the app when it starts (KEY_VAULT_URI, KEY_VAULT_MAP), with its managed identity. That works only after studio-platform-rbac has run and the secret studio-api-key exists. If a secret cannot be loaded the app still starts and the lock-down answers 503 (never open); the console log says which secret and why. Nothing is retried: restart the app after fixing a role or a secret."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-onboarding-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-onboarding-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-onboarding-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-onboarding-api-prod-001/ftp"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-onboarding-api-prod-001/scm"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-onboarding-api-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-onboarding-api-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-onboarding-api-prod-001/github-production"
+        }
+      ]
+    },
+    "studio": {
+      "description": "Invi Studio (Next.js): site, Application Insights, settings, diagnostics and its GitHub deploy identity with the federated credential. Contributor is enough",
+      "template": "Infrastructure/modules/webapp.bicep",
+      "parameters": "Infrastructure/environments/prod.studio.bicepparam",
+      "deploymentName": "invi-prod-studio-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/ftp",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/scm",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production",
+          "why": "New app on the existing plan (docs/studio-and-onboarding-api.md); nothing that exists is changed"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [
+        {
+          "id": "R-KV-STARTUP-LOAD",
+          "text": "STUDIO_API_KEY and STUDIO_SESSION_SECRET are read from Key Vault by launch.mjs when Studio starts, with its managed identity. That works only after studio-platform-rbac has run and both secrets exist. If one cannot be loaded Studio still starts and answers 'not configured' (sign-in 503); the console log and /api/health?deep=1 say so. Nothing is retried: restart the app after fixing a role or a secret."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/ftp"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/scm"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
+        }
+      ]
+    },
+    "studio-platform-rbac": {
+      "description": "Key Vault Secrets User on named secrets for the Studio app and the onboarding API, and Website Contributor on each app for its GitHub deploy identity. Needs Owner or RBAC Administrator",
+      "template": "Infrastructure/modules/studio-platform-rbac.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-platform-rbac.bicepparam",
+      "deploymentName": "invi-prod-studio-platform-rbac-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [
+        {
+          "module": "studioSecretAccess",
+          "why": "role assignments named with guid() on the Studio app's principal; verified by the RBAC checks against live",
+          "count": 2
+        },
+        {
+          "module": "onboardingApiSecretAccess",
+          "why": "role assignments named with guid() on the onboarding API's principal; verified by the RBAC checks against live",
+          "count": 2
+        },
+        {
+          "module": "studioDeployAccess",
+          "why": "role assignment named with guid() on the Studio deploy identity's principal; verified by the RBAC checks against live",
+          "count": 1
+        },
+        {
+          "module": "onboardingApiDeployAccess",
+          "why": "role assignment named with guid() on the onboarding API deploy identity's principal; verified by the RBAC checks against live",
+          "count": 1
+        }
+      ],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": []
+    },
+    "studio-domain": {
+      "description": "studio.invi.lol host name binding on the Studio app, without TLS (pass 1)",
+      "template": "Infrastructure/modules/webapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.studio.domain-studio-invi-lol.bicepparam",
+      "deploymentName": "invi-prod-studio-domain-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol",
+          "why": "Binds the public host name (DNS TXT asuid.studio and CNAME studio exist at Namecheap first)"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol"
+        }
+      ]
+    },
+    "studio-domain-tls": {
+      "description": "App Service managed certificate for studio.invi.lol and SNI on the binding (pass 2, after studio-domain)",
+      "template": "Infrastructure/modules/webapp-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.studio.domain-studio-invi-lol-tls.bicepparam",
+      "deploymentName": "invi-prod-studio-domain-tls-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Web/certificates",
+          "name": "studio.invi.lol-app-invi-studio-prod-001",
+          "why": "Free App Service managed certificate for the bound host name; renews itself"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "sslState",
+          "before": "Disabled",
+          "after": "SniEnabled",
+          "why": "Pass 2 turns TLS on for the host name that pass 1 bound; the certificate is created in the same deployment"
+        },
+        {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.sslState",
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "why": "what-if shows the same pass 2 switch (Disabled -> SniEnabled) as a Modify of the binding"
+        },
+        {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.thumbprint",
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "why": "the binding gets the thumbprint of the managed certificate that this deployment creates"
+        }
+      ],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol"
+        },
+        {
+          "type": "Microsoft.Web/certificates",
+          "name": "studio.invi.lol-app-invi-studio-prod-001"
         }
       ]
     }

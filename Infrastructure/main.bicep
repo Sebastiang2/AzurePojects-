@@ -109,6 +109,11 @@ param webDraftsTrustCloudflareConnectingIp bool = false
 // "Foreslå et sted" needs BOTH webDraftsEnabled and this one (Data API AND-gate). Off unless set.
 param placeSuggestionsEnabled bool = false
 
+// The system user that owns editorial activities (ADMIN_ACTIVITY_CREATOR_ID on the Data API). 0 = not set, as production is today. See the
+// parameter of the same name in modules/appservice.bicep, and the onboarding API's activityCreatorId: both must name the same, verified user.
+@minValue(0)
+param dataApiActivityCreatorId int = 0
+
 @description('Custom domain bound to the Data API (served through Cloudflare). Empty = no binding is managed by this template.')
 param dataApiCustomDomain string = ''
 
@@ -299,6 +304,7 @@ module appService 'modules/appservice.bicep' = {
     webDraftsRequireCaptcha: webDraftsRequireCaptcha
     webDraftsTrustCloudflareConnectingIp: webDraftsTrustCloudflareConnectingIp
     placeSuggestionsEnabled: placeSuggestionsEnabled
+    dataApiActivityCreatorId: dataApiActivityCreatorId
     dataApiCustomDomain: dataApiCustomDomain
     dataApiCertificateName: dataApiCertificateName
 
