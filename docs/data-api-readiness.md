@@ -20,33 +20,42 @@ can delay or fail startup. Do not deploy an older API without `/v1/extras/ready`
 1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through the App Service default hostname,
    without a redirect, and that its revision is the reviewed release. Confirm the authorized operator has all required secure
    deployment inputs without printing their values.
-2. The warm-up activation PR may change only its production parameter and permit adding or removing exactly the two
-   `WEBSITE_WARMUP_*` settings in the safety manifest. The removal permission supports rollback; it does not authorize a
-   Health Check path change. Health Check requires a later, separate PR.
-3. Run offline validation and a fresh read-only what-if/safety gate with the complete main template and real secure inputs.
-   Review all drift and expected resource changes, including the complete App Settings bag; do not assume this parameter is
-   the only change in an un-deployed template. Obtain separate deployment approval.
-4. After each activation, verify repeated readiness responses and the actual App Service configuration. An external 200
+2. Use the dedicated `data-api-warmup` deployment target. Its Bicep file declares only the existing Data API site and
+   Application Insights component as read-only references and writes only `app-invi-data-api-prod-001/appsettings`. The
+   safety manifest must reject any Auth API, Health Check, network, RBAC, identity or other resource write.
+3. Run `Infrastructure/scripts/verify-secure-parameters.sh --deployment data-api-warmup` in the **same authorized shell**
+   that will deploy. The operator supplies both RevenueCat values through a secure, non-echoing prompt as described in
+   `docs/deploy-runbook.md`; require `MATCH` for each. `deploy.sh` repeats this check and fails closed. Do not print, log,
+   commit or save the values in evidence.
+4. Run offline validation and a fresh read-only `preflight.sh --deployment data-api-warmup` / what-if. It must show only
+   the Data API App Settings resource changing, adding `WEBSITE_WARMUP_PATH=/v1/extras/ready`,
+   `WEBSITE_WARMUP_STATUSES=200`, and the separately acknowledged `WebDrafts__PlaceSuggestionsPaused=true` drift. Review the
+   complete bag and obtain separate deployment approval. Do not use `--deployment main` for this activation.
+5. The approved `deploy.sh --deployment data-api-warmup` path verifies three consecutive 200 responses at the pinned
+   backend SHA before changing settings, and waits for three more after the write. Failure stops and reports; it never
+   retries deployment or rolls back automatically. After activation, verify the actual App Service configuration. An external 200
    before activation alone cannot prove Azure's internal Health Check probes succeed.
 
-The full `main` template also writes Auth API and other resources. The 2026-10-20 baseline gate found
+The full `main` template also writes Auth API and other resources; it is **not** the warm-up activation path. The 2026-10-20 baseline gate found
 `WebDrafts__PlaceSuggestionsPaused` missing live and would add it as `true`; this is a separate setting change even though it
 pauses suggestions. The what-if reported `Modify` for Auth API site/appsettings/networkConfig, Data API equivalents,
 Application Insights components, a private endpoint and DNS group, and a diagnostic setting. The gate classified their
 reported deltas as platform noise or compared settings separately, but that does not prove an ARM write cannot recycle an
-app. Do not approve unrelated resource writes implicitly. Before deployment, review fresh, complete what-if evidence and
-decide whether a narrower Data API-only deployment path is required.
+app. Do not approve unrelated resource writes implicitly. The dedicated target must fail closed if its fresh what-if includes
+any of them.
 
 The complete Data API App Settings bag also requires `REVENUECAT_SECRET_API_KEY` and
 `REVENUECAT_WEBHOOK_AUTHORIZATION` in the authorized deploying shell. Run
-`Infrastructure/scripts/verify-secure-parameters.sh --deployment main`; require `MATCH` for both without recording values.
+`Infrastructure/scripts/verify-secure-parameters.sh --deployment data-api-warmup`; require `MATCH` for both without recording values.
 The review shell on 2026-10-20 had neither variable, so this prerequisite is **not yet satisfied**.
 
 ## Rollback
 
-Set **only the affected control** back to `false` in a reviewed rollback PR. The manifest already permits removing just the
-two `WEBSITE_WARMUP_*` settings; Health Check rollback clears
-`healthCheckPath`. Confirm the exact reverse change in a fresh what-if/safety gate, provide secure inputs, and obtain separate
-deployment approval. The configuration deployment can recycle the Data API, so allow for a brief interruption and verify
-health afterward. Neither rollback has been exercised in production. If reverting API code to a revision without `/ready`,
-remove the warm-up requirement first through an approved deployment.
+Set `dataApiReadinessWarmupEnabled=false` in **both** production parameter files in a reviewed rollback PR, then deploy only
+`data-api-warmup`. The manifest permits removing just the two `WEBSITE_WARMUP_*` settings. Confirm the exact reverse change
+in a fresh what-if/safety gate, verify both RevenueCat inputs, and obtain separate deployment approval. The App Settings
+write can recycle the Data API. The rollback path deliberately does **not** require `/ready` before removing warm-up;
+afterward it requires three `/v1/extras/is-up` 200 responses, while the safety gate verifies that both warm-up settings
+are absent. The deployment script rejects disagreement between the two production parameter files. Do not deploy an older backend
+revision without `/ready` until this rollback has completed. Health Check remains disabled throughout. This rollback has
+not been exercised in production.
