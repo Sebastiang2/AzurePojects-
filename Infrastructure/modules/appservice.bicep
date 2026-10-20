@@ -47,8 +47,11 @@ param dataApiCloudflareOriginLockEnabled bool = false
 param webDraftsPlaceSuggestionsPaused bool = true
 param placeSuggestionsEnabled bool = false
 
-@description('Enables Data API readiness warm-up and Health Check on /v1/extras/ready. Keep false until the matching API endpoint has been deployed and reviewed.')
+@description('Enables Data API startup warm-up on /v1/extras/ready with HTTP 200 required. Independent of Health Check.')
 param dataApiReadinessWarmupEnabled bool = false
+
+@description('Enables Data API Health Check on /v1/extras/ready. Independent of startup warm-up.')
+param dataApiHealthCheckEnabled bool = false
 
 @description('Verified UserTable.UserId for editorial activities in the Data API. Zero leaves ADMIN_ACTIVITY_CREATOR_ID unset.')
 @minValue(0)
@@ -205,9 +208,8 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
       vnetRouteAllEnabled: true
 
       alwaysOn: true
-      // Health Check only receives 200 after the API's readiness endpoint has verified its database dependency.
-      // Null removes the Health Check path on rollback; do not substitute the liveness-only is-up endpoint.
-      healthCheckPath: dataApiReadinessWarmupEnabled ? '/v1/extras/ready' : null
+      // Independently controlled from startup warm-up. Null clears the Health Check path on rollback.
+      healthCheckPath: dataApiHealthCheckEnabled ? '/v1/extras/ready' : null
       http20Enabled: true
       webSocketsEnabled: true
 
@@ -302,9 +304,8 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     RevenueCat__SecretApiKey: revenueCatSecretApiKey
     RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
 
-    // These settings make App Service wait for the API readiness endpoint to return 200 before considering a new
-    // worker warm. They are deliberately emitted only with the separately approved switch. This config resource
-    // is the complete desired app-settings bag, so setting the switch back to false removes both settings again.
+    // Startup warm-up waits for HTTP 200 from the database-backed readiness endpoint. This switch does not change
+    // Health Check. The full desired app-settings bag removes both settings when the switch is rolled back to false.
   }, dataApiReadinessWarmupEnabled ? {
     WEBSITE_WARMUP_PATH: '/v1/extras/ready'
     WEBSITE_WARMUP_STATUSES: '200'
