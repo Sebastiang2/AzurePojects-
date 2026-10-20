@@ -205,6 +205,26 @@ az webapp restart -g $RG -n app-invi-data-api-prod-001 --subscription $SUB
 Gjenopprettingen er bare en midlertidig stabilisering: Bicep og live er nå ulike igjen. Kjør gaten (`preflight.sh`), finn årsaken,
 rett i Bicep via PR og utrull på nytt. Ikke la live-endringen bli stående som håndlaget drift.
 
+### 5.2.1 Origin-lock: eksplisitt, testbar nødrollback
+
+Når `dataApiCloudflareOriginLockEnabled` har vært `true`, skal en rollback **ikke** gjøres ved å utelate
+`ipSecurityRestrictions` fra malen eller med et manuelt portal-kall. Sett parameteren til `false` i en godkjent PR og bruk
+samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
+`ipSecurityRestrictionsDefaultAction: 'Allow'`; det fjerner de navngitte Cloudflare-reglene i stedet for å la dem bli stående.
+Den effektive verdien av `WebDrafts__TrustCloudflareConnectingIp` er bundet til origin-locken, slik at den blir `false` når
+origin-locken er `false`, selv om parameteren feilaktig ikke ble slått av samtidig.
+
+Gjør rollback i to deployer: først sett `webDraftsTrustCloudflareConnectingIp=false` mens origin-locken fortsatt er på, og
+verifiser den kjørende appinnstillingen. Først deretter settes `dataApiCloudflareOriginLockEnabled=false`. Dette eliminerer
+også et eventuelt ordensvindu mellom oppdateringen av App Settings og siteConfig i ARM.
+
+Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment main --dry-run` bestå og rapporten vise at bare
+Data API-ets hovedrestriksjoner går fra Cloudflare-listen/`Deny` til tom liste/`Allow`. `scmIpSecurityRestrictions` og
+`scmIpSecurityRestrictionsUseMain=false` skal være uendret, slik at GitHub Actions/Kudu beholder sin egen tilgangsvei.
+Etter den godkjente deployen leses Access Restrictions på nytt: hovedsiden skal bare ha App Services implisitte «Allow all»,
+mens SCM fortsatt har samme «Allow all»-regel og `useMain=false`. Lagre før-/etterrapporten; ikke påstå at rollback er testet
+før akkurat denne kontrollerte sekvensen har kjørt.
+
 ### 5.3 MySQL-passordet
 
 En utrulling av `main` endrer ikke MySQL-passordet: serveren skrives ikke (§2.3), og gaten stopper alt som ville sendt et
