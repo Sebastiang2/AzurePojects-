@@ -42,6 +42,7 @@ param inviteBaseUrl string
 param webDraftsEnabled bool
 param webDraftsRequireCaptcha bool = true
 param webDraftsTrustCloudflareConnectingIp bool = false
+param webDraftsPlaceSuggestionsPaused bool = true
 param placeSuggestionsEnabled bool = false
 
 @description('Verified UserTable.UserId for editorial activities in the Data API. Zero leaves ADMIN_ACTIVITY_CREATOR_ID unset.')
@@ -240,6 +241,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // whole settings bag and would otherwise drop them.
     WebDrafts__RequireCaptcha: toLower(string(webDraftsRequireCaptcha))
     WebDrafts__TrustCloudflareConnectingIp: toLower(string(webDraftsTrustCloudflareConnectingIp))
+    WebDrafts__PlaceSuggestionsPaused: toLower(string(webDraftsPlaceSuggestionsPaused))
     PlaceSuggestions__Enabled: toLower(string(placeSuggestionsEnabled))
 
     Cai__CallsPerUserPerDay: caiCallsPerUserPerDay
