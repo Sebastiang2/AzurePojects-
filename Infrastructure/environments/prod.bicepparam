@@ -74,10 +74,13 @@ param inviteBaseUrl = 'https://app.cetchapp.com/'
 // settings are configured; the website's create flow is off as well.
 param webDraftsEnabled = false
 
-// Live in production (set by hand 2026-10-07, carried here 2026-10-14): captcha required, and the client address taken from
-// the last X-Forwarded-For entry until the origin accepts only Cloudflare.
+// Captcha required. Keep CF client-IP trust off until Cloudflare peer/origin-lock verification is approved.
 param webDraftsRequireCaptcha = true
 param webDraftsTrustCloudflareConnectingIp = false
+// Do not enable until Cloudflare-only access and zone verification are proven.
+param dataApiCloudflareOriginLockEnabled = false
+// Explicit rollback brake; leave on until moderation launch is separately approved.
+param webDraftsPlaceSuggestionsPaused = true
 
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false

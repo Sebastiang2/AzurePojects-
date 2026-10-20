@@ -62,3 +62,18 @@ test("prod sets a verified creator id and the safety manifest allows that one ne
   const allowed = JSON.stringify(manifest).includes('"ADMIN_ACTIVITY_CREATOR_ID"');
   assert.ok(allowed, "manifest must list ADMIN_ACTIVITY_CREATOR_ID as an allowed new setting");
 });
+
+test("origin-lock rollback is explicit and its WebDrafts brake is safety-gated", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const appService = read("modules/appservice.bicep");
+  const manifest = JSON.parse(read("safety/manifest.json"));
+  const dataApi = manifest.apps["app-invi-data-api-prod-001"];
+
+  assert.match(appService, /ipSecurityRestrictions:\s*dataApiCloudflareOriginLockEnabled\s*\?\s*cloudflareOriginAccessRestrictions\s*:\s*\[\]/);
+  assert.match(appService, /ipSecurityRestrictionsDefaultAction:\s*dataApiCloudflareOriginLockEnabled\s*\?\s*'Deny'\s*:\s*'Allow'/);
+  assert.match(appService, /effectiveWebDraftsTrustCloudflareConnectingIp\s*=\s*dataApiCloudflareOriginLockEnabled\s*&&\s*webDraftsTrustCloudflareConnectingIp/);
+  assert.match(appService, /WebDrafts__TrustCloudflareConnectingIp:\s*toLower\(string\(effectiveWebDraftsTrustCloudflareConnectingIp\)\)/);
+  assert.ok(dataApi.required.includes("WebDrafts__PlaceSuggestionsPaused"));
+  assert.equal(dataApi.mustEqual.WebDrafts__PlaceSuggestionsPaused, "true");
+  assert.ok(manifest.deployments.main.allowedNewSettings["app-invi-data-api-prod-001"].includes("WebDrafts__PlaceSuggestionsPaused"));
+});
