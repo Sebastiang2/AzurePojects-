@@ -82,6 +82,10 @@ param webDraftsTrustCloudflareConnectingIp = false
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
+// Keep this off until the API revision with /v1/extras/ready has been deployed and validated by the manual release
+// workflow. Enabling it changes Health Check settings and restarts/recycles the Data API, so it needs separate approval.
+param dataApiReadinessWarmupEnabled = false
+
 // UserId of the 'Invi Activities' system user (Provider='System') created by the approved Core DB migration.
 // Zero would leave ADMIN_ACTIVITY_CREATOR_ID unset. Changing it restarts only the Data API on the next main deploy.
 param dataApiActivityCreatorId = 1636
