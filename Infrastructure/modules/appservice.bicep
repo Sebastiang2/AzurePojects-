@@ -207,10 +207,15 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
       minTlsVersion: '1.2'
 
       scmMinTlsVersion: '1.2'
-    }, dataApiCloudflareOriginLockEnabled ? {
-      ipSecurityRestrictions: cloudflareOriginAccessRestrictions
-      ipSecurityRestrictionsDefaultAction: 'Deny'
-    } : {})
+    }, {
+      // This is intentionally explicit in both states. App Service keeps access
+      // restrictions that a later PUT omits, so merely removing these fields
+      // would not be a rollback after the lock has once been enabled.
+      // An empty list together with Allow removes the named Cloudflare rules and
+      // restores the normal public API perimeter. SCM remains separate below.
+      ipSecurityRestrictions: dataApiCloudflareOriginLockEnabled ? cloudflareOriginAccessRestrictions : []
+      ipSecurityRestrictionsDefaultAction: dataApiCloudflareOriginLockEnabled ? 'Deny' : 'Allow'
+    })
   }
 }
 

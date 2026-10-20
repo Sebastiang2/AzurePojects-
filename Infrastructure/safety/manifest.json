@@ -56,12 +56,14 @@
         "WebDrafts__Enabled",
         "WebDrafts__RequireCaptcha",
         "WebDrafts__TrustCloudflareConnectingIp",
+        "WebDrafts__PlaceSuggestionsPaused",
         "PlaceSuggestions__Enabled"
       ],
       "mustEqual": {
         "WebDrafts__Enabled": "false",
         "WebDrafts__RequireCaptcha": "true",
         "WebDrafts__TrustCloudflareConnectingIp": "false",
+        "WebDrafts__PlaceSuggestionsPaused": "true",
         "PlaceSuggestions__Enabled": "false"
       },
       "secureFeeds": {
@@ -530,6 +532,7 @@
       "allowedNewSettings": {
         "app-invi-data-api-prod-001": [
           "PlaceSuggestions__Enabled",
+          "WebDrafts__PlaceSuggestionsPaused",
           "ADMIN_ACTIVITY_CREATOR_ID"
         ]
       },
