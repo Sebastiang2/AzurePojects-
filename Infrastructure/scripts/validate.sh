@@ -23,7 +23,7 @@ fail() { printf 'FAIL  %s\n' "$*"; failures=$((failures + 1)); }
 ok() { printf 'ok    %s\n' "$*"; }
 
 note "== build: every template compiles"
-for template in main.bicep modules/*.bicep; do
+for template in *.bicep modules/*.bicep; do
   if output="$(az bicep build --file "$template" --stdout 2>&1 >/dev/null)"; then
     ok "build $template"
   else
@@ -34,7 +34,7 @@ done
 note "== lint (bicepconfig.json): errors fail, warnings are shown"
 # The exit status of `az bicep lint` decides, not only the text: a linter that did not run (Bicep CLI missing, template
 # unreadable) prints no "Error" lines, and counting lines alone would report that as a pass.
-for template in main.bicep modules/*.bicep; do
+for template in *.bicep modules/*.bicep; do
   output="$(az bicep lint --file "$template" 2>&1)"; lint_rc=$?
   output="$(printf '%s\n' "$output" | grep -v 'new Bicep release')"
   errors="$(printf '%s\n' "$output" | grep -c ' : Error ' || true)"

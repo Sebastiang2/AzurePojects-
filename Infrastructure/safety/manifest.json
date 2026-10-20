@@ -586,6 +586,40 @@
         }
       ]
     },
+    "data-api-warmup": {
+      "description": "Data API App Settings only: activate or roll back startup warm-up without writing Auth API, site configuration or unrelated infrastructure",
+      "template": "Infrastructure/data-api-warmup.bicep",
+      "parameters": "Infrastructure/environments/prod.data-api-warmup.bicepparam",
+      "deploymentName": "invi-prod-data-api-warmup-001",
+      "requiredBackendRevision": "cd4a49fe183a1714a0bd9f76ed2d53a73d082066",
+      "secureEnvironment": [
+        "REVENUECAT_SECRET_API_KEY",
+        "REVENUECAT_WEBHOOK_AUTHORIZATION"
+      ],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {
+        "app-invi-data-api-prod-001": [
+          "WebDrafts__PlaceSuggestionsPaused",
+          "WEBSITE_WARMUP_PATH",
+          "WEBSITE_WARMUP_STATUSES"
+        ]
+      },
+      "allowedRemovedSettings": {
+        "app-invi-data-api-prod-001": [
+          "WEBSITE_WARMUP_PATH",
+          "WEBSITE_WARMUP_STATUSES"
+        ]
+      },
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-data-api-prod-001/appsettings"
+        }
+      ]
+    },
     "adminapp-a": {
       "description": "Admin app (Next.js) with its Application Insights, settings, Easy Auth and diagnostics. Contributor is enough",
       "template": "Infrastructure/modules/adminapp.bicep",

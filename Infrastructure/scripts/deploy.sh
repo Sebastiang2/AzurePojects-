@@ -80,6 +80,22 @@ TEMPLATE="$(field d.template)"
 PARAMETERS="$(field d.parameters)"
 DEPLOYMENT_NAME="$(field d.deploymentName)"
 SECURE="$(field d.secureEnvironment)"
+REQUIRED_BACKEND_REVISION="$(field d.requiredBackendRevision)"
+WARMUP_MODE=""
+if [ -n "$REQUIRED_BACKEND_REVISION" ]; then
+  WARMUP_MODE="$(node -e '
+const fs = require("fs");
+const read = (file) => {
+  const matches = [...fs.readFileSync(file, "utf8").matchAll(/^param dataApiReadinessWarmupEnabled = (true|false)$/gm)];
+  if (matches.length !== 1) process.exit(1);
+  return matches[0][1];
+};
+const dedicated = read(process.argv[1]);
+// Canonical main stays disabled. A full main deployment is never the activation or rollback path.
+if (read(process.argv[2]) !== "false") process.exit(1);
+process.stdout.write(dedicated);
+' "$(to_native "$REPO_ROOT/$PARAMETERS")" "$(to_native "$REPO_ROOT/Infrastructure/environments/prod.bicepparam")")" || block "main production warm-up parameter must remain false, and the dedicated parameter must be explicit."
+fi
 MAX_AGE="$(field top.maxEvidenceAgeMinutes)"
 MAX_AGE="${MAX_AGE:-30}"
 
@@ -122,6 +138,20 @@ for name in $SECURE; do
   fi
 done
 [ -z "$SECURE" ] || echo "Secure parameters required: $SECURE (values are never shown)"
+
+if [ -n "$REQUIRED_BACKEND_REVISION" ]; then
+  echo "Comparing the supplied RevenueCat values with production without printing them..."
+  if ! bash "$HERE/verify-secure-parameters.sh" --deployment "$DEPLOYMENT"; then
+    block "secure deployment inputs are missing or differ from production."
+  fi
+fi
+
+if [ "$WARMUP_MODE" = "true" ]; then
+  echo "Verifying the currently running Data API before changing its App Settings..."
+  if ! node "$HERE/verify-data-api-ready.mjs" "$REQUIRED_BACKEND_REVISION" 3 3; then
+    block "Data API readiness or approved backend revision did not pass before the configuration change."
+  fi
+fi
 
 # ---- 3. the gate -------------------------------------------------------------------------------------------------------
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/invi-deploy.XXXXXX")"
@@ -220,6 +250,21 @@ if bash "$HERE/preflight.sh" --deployment "$DEPLOYMENT" --work "$POST"; then
 else
   echo "ERROR: the deployment succeeded but the post-deployment verification FAILED. Investigate now: $POST/report.md (see docs/deploy-runbook.md)" >&2
   exit 1
+fi
+
+if [ "$WARMUP_MODE" = "true" ]; then
+  echo "Waiting for the Data API to recover after the App Settings write..."
+  node "$HERE/verify-data-api-ready.mjs" "$REQUIRED_BACKEND_REVISION" 30 3 || {
+    echo "ERROR: Data API readiness did not recover at the approved revision. Do not automatically retry or roll back." >&2
+    exit 1
+  }
+elif [ "$WARMUP_MODE" = "false" ]; then
+  # A broken /ready is the reason to roll back warm-up; it must not prevent removal of the setting.
+  echo "Warm-up rollback: checking liveness after removal, without requiring /ready or a particular backend revision..."
+  node "$HERE/verify-data-api-ready.mjs" --liveness 30 3 || {
+    echo "ERROR: warm-up settings were removed, but Data API liveness did not recover. Investigate; do not deploy again automatically." >&2
+    exit 1
+  }
 fi
 
 for app in $(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(Object.keys(m.apps??{}).join(" "))' "$MANIFEST_N"); do
