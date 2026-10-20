@@ -1,31 +1,38 @@
-# Data API readiness warm-up
+# Data API readiness controls
 
-`dataApiReadinessWarmupEnabled` is deliberately `false` in `Infrastructure/environments/prod.bicepparam`. The capability is
-present in Bicep but this change does not configure App Service Health Check or warm-up settings in production.
+Production explicitly sets both `dataApiReadinessWarmupEnabled=false` and `dataApiHealthCheckEnabled=false` in
+`Infrastructure/environments/prod.bicepparam`. Merging these independent controls activates neither feature. Both target
+the database-backed `/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
 
-When separately approved, setting it to `true` configures the Data API only:
+| Control | When enabled | When disabled again |
+| --- | --- | --- |
+| `dataApiReadinessWarmupEnabled` | Adds `WEBSITE_WARMUP_PATH=/v1/extras/ready` and `WEBSITE_WARMUP_STATUSES=200` to the Data API App Settings. A newly started worker must return HTTP 200 to pass warm-up. | The complete desired App Settings resource removes both settings. Health Check is unaffected. |
+| `dataApiHealthCheckEnabled` | Sets `siteConfig.healthCheckPath=/v1/extras/ready` for the Data API. | Sets `healthCheckPath` to `null`. Startup warm-up is unaffected. |
 
-- `siteConfig.healthCheckPath = /v1/extras/ready`
-- `WEBSITE_WARMUP_PATH = /v1/extras/ready`
-- `WEBSITE_WARMUP_STATUSES = 200`
-
-The endpoint is database-backed; do not replace it with `/v1/extras/is-up`, which is liveness-only. On this one-worker plan,
-Health Check and warm-up reduce traffic being accepted before readiness but do not provide a zero-downtime deployment or a
-deployment slot.
+Each setting needs its own reviewed activation and rollback. App Settings or Health Check configuration changes can recycle
+the Data API. On this single-worker plan, neither feature provides zero downtime or a deployment slot. Health Check cannot
+reroute traffic to another worker; prolonged failed probes can replace the unhealthy worker. Warm-up that never receives 200
+can delay or fail startup. Do not deploy an older API without `/v1/extras/ready` while startup warm-up requires that path.
 
 ## Required activation gate
 
-1. First merge the API release-readiness code and deploy a reviewed candidate through its manual workflow in strict mode.
-   It must return three consecutive `200` responses with a matching `X-Invi-Revision` header.
-2. In a separate IaC activation PR, change the production parameter to `true` and update the safety manifest to allow exactly
-   `WEBSITE_WARMUP_PATH`, `WEBSITE_WARMUP_STATUSES` and the Health Check path change. Do not combine this with WebDrafts,
-   Cloudflare, Key Vault, identity, RBAC or network changes.
-3. Run offline validation and the read-only safety gate/what-if with the real secure deployment inputs. Review every allowed
-   change, then obtain explicit approval before the Bicep deployment.
+1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through the App Service default hostname,
+   without a redirect, and that its revision is the reviewed release. Confirm the authorized operator has all required secure
+   deployment inputs without printing their values.
+2. In a separate activation PR, change **only the chosen production parameter**. A warm-up activation needs safety-manifest
+   permission for exactly the two new `WEBSITE_WARMUP_*` settings. A Health Check activation needs permission for exactly
+   the `healthCheckPath` change. This code-only PR grants neither permission.
+3. Run offline validation and a fresh read-only what-if/safety gate with the complete main template and real secure inputs.
+   Review all drift and expected resource changes, including the complete App Settings bag; do not assume this parameter is
+   the only change in an un-deployed template. Obtain separate deployment approval.
+4. After each activation, verify repeated readiness responses and the actual App Service configuration. An external 200
+   before activation alone cannot prove Azure's internal Health Check probes succeed.
 
 ## Rollback
 
-Set `dataApiReadinessWarmupEnabled` back to `false` in a reviewed rollback PR. The template clears `healthCheckPath` and,
-because the app-settings resource is the full desired bag, removes both `WEBSITE_WARMUP_*` settings. Confirm that exact
-removal in a fresh read-only what-if before deployment. The Bicep deployment itself recycles the Data API, so it requires a
-separate approved maintenance decision; it is not an emergency rollback substitute for application code.
+Set **only the affected control** back to `false` in a reviewed rollback PR, with narrowly scoped safety-manifest permission
+for the reverse change. Warm-up rollback removes both `WEBSITE_WARMUP_*` settings; Health Check rollback clears
+`healthCheckPath`. Confirm the exact reverse change in a fresh what-if/safety gate, provide secure inputs, and obtain separate
+deployment approval. The configuration deployment can recycle the Data API, so allow for a brief interruption and verify
+health afterward. Neither rollback has been exercised in production. If reverting API code to a revision without `/ready`,
+remove the warm-up requirement first through an approved deployment.

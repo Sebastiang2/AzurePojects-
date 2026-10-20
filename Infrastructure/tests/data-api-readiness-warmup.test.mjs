@@ -4,21 +4,44 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("production keeps Data API readiness warm-up explicitly disabled by default", () => {
+test("production and template defaults keep both readiness controls disabled", () => {
   const parameters = read("environments/prod.bicepparam");
+  const main = read("main.bicep");
+  const module = read("modules/appservice.bicep");
   assert.match(parameters, /^param dataApiReadinessWarmupEnabled = false$/m);
+  assert.match(parameters, /^param dataApiHealthCheckEnabled = false$/m);
+  for (const source of [main, module]) {
+    assert.match(source, /^param dataApiReadinessWarmupEnabled bool = false$/m);
+    assert.match(source, /^param dataApiHealthCheckEnabled bool = false$/m);
+  }
 });
 
-test("warm-up accepts only the database-backed readiness endpoint and HTTP 200", () => {
+test("main passes independent controls through to the App Service module", () => {
+  const main = read("main.bicep");
+  assert.match(main, /^\s+dataApiReadinessWarmupEnabled: dataApiReadinessWarmupEnabled$/m);
+  assert.match(main, /^\s+dataApiHealthCheckEnabled: dataApiHealthCheckEnabled$/m);
+});
+
+test("Health Check uses the readiness endpoint independently of startup warm-up", () => {
   const module = read("modules/appservice.bicep");
-  assert.match(module, /healthCheckPath:\s*dataApiReadinessWarmupEnabled \? '\/v1\/extras\/ready' : null/);
+  assert.match(module, /healthCheckPath:\s*dataApiHealthCheckEnabled \? '\/v1\/extras\/ready' : null/);
+  assert.doesNotMatch(module, /healthCheckPath:\s*dataApiReadinessWarmupEnabled/);
+});
+
+test("startup warm-up independently requires HTTP 200 from the readiness endpoint", () => {
+  const module = read("modules/appservice.bicep");
+  assert.match(module, /dataApiReadinessWarmupEnabled \? \{\s*WEBSITE_WARMUP_PATH:\s*'\/v1\/extras\/ready'\s*WEBSITE_WARMUP_STATUSES:\s*'200'\s*\} : \{\}/);
   assert.match(module, /WEBSITE_WARMUP_PATH:\s*'\/v1\/extras\/ready'/);
   assert.match(module, /WEBSITE_WARMUP_STATUSES:\s*'200'/);
   assert.doesNotMatch(module, /WEBSITE_WARMUP_PATH:\s*'\/v1\/extras\/is-up'/);
+  assert.doesNotMatch(module, /dataApiHealthCheckEnabled \? \{\s*WEBSITE_WARMUP_PATH/);
 });
 
-test("warm-up settings are omitted when disabled so a reviewed false switch is a rollback", () => {
-  const module = read("modules/appservice.bicep");
-  assert.match(module, /dataApiReadinessWarmupEnabled \? \{[\s\S]*WEBSITE_WARMUP_PATH[\s\S]*\} : \{\}/);
-  assert.match(module, /healthCheckPath:[\s\S]*: null/);
+test("code-only PR grants no safety-manifest permission to activate either control", () => {
+  const manifest = JSON.parse(read("safety/manifest.json"));
+  const main = manifest.deployments.main;
+  const settings = main.allowedNewSettings?.["app-invi-data-api-prod-001"] ?? [];
+  assert.ok(!settings.includes("WEBSITE_WARMUP_PATH"));
+  assert.ok(!settings.includes("WEBSITE_WARMUP_STATUSES"));
+  assert.ok(!(main.allowedChanges ?? []).some((change) => change.property === "siteConfig.healthCheckPath"));
 });
