@@ -4,11 +4,11 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("production enables only warm-up while template defaults remain disabled", () => {
+test("canonical production remains disabled; dedicated activation enables only warm-up", () => {
   const parameters = read("environments/prod.bicepparam");
   const main = read("main.bicep");
   const module = read("modules/appservice.bicep");
-  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = true$/m);
+  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = false$/m);
   assert.match(parameters, /^param dataApiHealthCheckEnabled = false$/m);
   for (const disabled of ["webDraftsEnabled", "webDraftsTrustCloudflareConnectingIp", "dataApiCloudflareOriginLockEnabled", "placeSuggestionsEnabled"]) {
     assert.match(parameters, new RegExp(`^param ${disabled} = false$`, "m"));
@@ -41,18 +41,12 @@ test("startup warm-up independently requires HTTP 200 from the readiness endpoin
   assert.doesNotMatch(module, /dataApiHealthCheckEnabled \? \{\s*WEBSITE_WARMUP_PATH/);
 });
 
-test("activation permits only the two warm-up settings, not Health Check", () => {
+test("full main deployment cannot silently activate or remove warm-up", () => {
   const manifest = JSON.parse(read("safety/manifest.json"));
   const main = manifest.deployments.main;
   const settings = main.allowedNewSettings?.["app-invi-data-api-prod-001"] ?? [];
-  assert.deepEqual(settings.filter((setting) => setting.startsWith("WEBSITE_WARMUP_")), [
-    "WEBSITE_WARMUP_PATH",
-    "WEBSITE_WARMUP_STATUSES",
-  ]);
-  assert.deepEqual(main.allowedRemovedSettings?.["app-invi-data-api-prod-001"], [
-    "WEBSITE_WARMUP_PATH",
-    "WEBSITE_WARMUP_STATUSES",
-  ]);
+  assert.deepEqual(settings.filter((setting) => setting.startsWith("WEBSITE_WARMUP_")), []);
+  assert.deepEqual(main.allowedRemovedSettings?.["app-invi-data-api-prod-001"] ?? [], []);
   assert.ok(!(main.allowedChanges ?? []).some((change) => change.property === "siteConfig.healthCheckPath"));
 });
 
@@ -64,6 +58,9 @@ test("dedicated deployment can write only Data API App Settings", () => {
   assert.deepEqual(deployment.touches, [{ type: "Microsoft.Web/sites/config", name: "app-invi-data-api-prod-001/appsettings" }]);
   assert.deepEqual(deployment.allowedNewSettings["app-invi-data-api-prod-001"], [
     "WebDrafts__PlaceSuggestionsPaused", "WEBSITE_WARMUP_PATH", "WEBSITE_WARMUP_STATUSES",
+  ]);
+  assert.deepEqual(deployment.allowedRemovedSettings["app-invi-data-api-prod-001"], [
+    "WEBSITE_WARMUP_PATH", "WEBSITE_WARMUP_STATUSES",
   ]);
   assert.deepEqual(deployment.allowedChanges, []);
   assert.match(template, /resource dataApi 'Microsoft\.Web\/sites@2024-11-01' existing/);
@@ -92,6 +89,9 @@ test("dedicated production parameters do not drift from the canonical production
   for (const [name, value] of dedicated) {
     if (name === "databaseUser") {
       assert.equal(value, canonical.get("mysqlAdminUsername"));
+    } else if (name === "dataApiReadinessWarmupEnabled") {
+      assert.equal(value, "true");
+      assert.equal(canonical.get(name), "false");
     } else if (canonical.has(name)) {
       assert.equal(value, canonical.get(name), `${name} must match the canonical production parameter`);
     }

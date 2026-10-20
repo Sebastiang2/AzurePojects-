@@ -1,9 +1,10 @@
 # Data API readiness controls
 
-This activation proposal sets `dataApiReadinessWarmupEnabled=true` and leaves `dataApiHealthCheckEnabled=false` in
-`Infrastructure/environments/prod.bicepparam`. Merging IaC code does not deploy it, but a later **main** Bicep deployment
-would activate startup warm-up. Do not merge or deploy this proposal before the gates below pass and separate approval is
-given. Both controls target the database-backed `/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
+This activation proposal keeps `dataApiReadinessWarmupEnabled=false` and `dataApiHealthCheckEnabled=false` in the
+canonical `Infrastructure/environments/prod.bicepparam`. Only the dedicated
+`Infrastructure/environments/prod.data-api-warmup.bicepparam` sets warm-up to `true`. Merging code does not deploy it;
+the full **main** deployment is not authorized to add or remove warm-up settings. Both controls target the database-backed
+`/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
 
 | Control | When enabled | When disabled again |
 | --- | --- | --- |
@@ -51,11 +52,13 @@ The review shell on 2026-10-20 had neither variable, so this prerequisite is **n
 
 ## Rollback
 
-Set `dataApiReadinessWarmupEnabled=false` in **both** production parameter files in a reviewed rollback PR, then deploy only
+Set `dataApiReadinessWarmupEnabled=false` in the **dedicated** production parameter file in a reviewed rollback PR; the
+canonical production parameter remains `false` throughout. Then deploy only
 `data-api-warmup`. The manifest permits removing just the two `WEBSITE_WARMUP_*` settings. Confirm the exact reverse change
 in a fresh what-if/safety gate, verify both RevenueCat inputs, and obtain separate deployment approval. The App Settings
 write can recycle the Data API. The rollback path deliberately does **not** require `/ready` before removing warm-up;
 afterward it requires three `/v1/extras/is-up` 200 responses, while the safety gate verifies that both warm-up settings
-are absent. The deployment script rejects disagreement between the two production parameter files. Do not deploy an older backend
+are absent. The deployment script rejects a canonical main parameter of `true`. The main manifest also rejects the
+warm-up settings being added or removed by an unrelated full deployment. Do not deploy an older backend
 revision without `/ready` until this rollback has completed. Health Check remains disabled throughout. This rollback has
 not been exercised in production.

@@ -85,9 +85,9 @@ param webDraftsPlaceSuggestionsPaused = true
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
-// Activation proposal: a later approved Bicep deployment adds startup warm-up; merging this file alone does not deploy.
-// Health Check remains independent and disabled. App Settings changes can recycle the Data API.
-param dataApiReadinessWarmupEnabled = true
+// Full main deployments must never activate or remove startup warm-up as a side effect.
+// Use only the reviewed data-api-warmup deployment target for activation and rollback.
+param dataApiReadinessWarmupEnabled = false
 param dataApiHealthCheckEnabled = false
 
 // UserId of the 'Invi Activities' system user (Provider='System') created by the approved Core DB migration.

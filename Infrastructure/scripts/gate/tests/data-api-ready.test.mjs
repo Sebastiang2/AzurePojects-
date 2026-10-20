@@ -76,5 +76,5 @@ test("deploy.sh checks the pinned revision both before and after its single depl
   assert.ok(secrets >= 0 && secrets < first && first < deploy && deploy < last);
   assert.match(script, /if \[ "\$WARMUP_MODE" = "true" \]; then[\s\S]*?verify-data-api-ready\.mjs" "\$REQUIRED_BACKEND_REVISION" 3 3/);
   assert.match(script, /elif \[ "\$WARMUP_MODE" = "false" \]; then[\s\S]*?verify-data-api-ready\.mjs" --liveness 30 3/);
-  assert.match(script, /dedicated !== read\(process\.argv\[2\]\)/);
+  assert.match(script, /read\(process\.argv\[2\]\) !== "false"/);
 });
