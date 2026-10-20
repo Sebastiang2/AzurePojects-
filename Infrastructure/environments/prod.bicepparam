@@ -77,6 +77,8 @@ param webDraftsEnabled = false
 // Captcha required. Keep CF client-IP trust off until Cloudflare peer/origin-lock verification is approved.
 param webDraftsRequireCaptcha = true
 param webDraftsTrustCloudflareConnectingIp = false
+// Do not enable until Cloudflare-only access and zone verification are proven.
+param dataApiCloudflareOriginLockEnabled = false
 // Explicit rollback brake; leave on until moderation launch is separately approved.
 param webDraftsPlaceSuggestionsPaused = true
 

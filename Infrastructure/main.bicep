@@ -105,6 +105,9 @@ param webDraftsEnabled bool
 // drops them. The defaults are what production has today (2026-10-14).
 param webDraftsRequireCaptcha bool = true
 param webDraftsTrustCloudflareConnectingIp bool = false
+// Default false preserves the current perimeter. Set only after the Cloudflare
+// zone and all direct callers have passed the rollout checks.
+param dataApiCloudflareOriginLockEnabled bool = false
 // Separate emergency brake for the review queue. Default closed even if a later deployment enables its feature flag.
 param webDraftsPlaceSuggestionsPaused bool = true
 
@@ -305,6 +308,7 @@ module appService 'modules/appservice.bicep' = {
     webDraftsEnabled: webDraftsEnabled
     webDraftsRequireCaptcha: webDraftsRequireCaptcha
     webDraftsTrustCloudflareConnectingIp: webDraftsTrustCloudflareConnectingIp
+    dataApiCloudflareOriginLockEnabled: dataApiCloudflareOriginLockEnabled
     webDraftsPlaceSuggestionsPaused: webDraftsPlaceSuggestionsPaused
     placeSuggestionsEnabled: placeSuggestionsEnabled
     dataApiActivityCreatorId: dataApiActivityCreatorId
