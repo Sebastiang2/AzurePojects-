@@ -71,6 +71,8 @@ test("origin-lock rollback is explicit and its WebDrafts brake is safety-gated",
 
   assert.match(appService, /ipSecurityRestrictions:\s*dataApiCloudflareOriginLockEnabled\s*\?\s*cloudflareOriginAccessRestrictions\s*:\s*\[\]/);
   assert.match(appService, /ipSecurityRestrictionsDefaultAction:\s*dataApiCloudflareOriginLockEnabled\s*\?\s*'Deny'\s*:\s*'Allow'/);
+  assert.match(appService, /effectiveWebDraftsTrustCloudflareConnectingIp\s*=\s*dataApiCloudflareOriginLockEnabled\s*&&\s*webDraftsTrustCloudflareConnectingIp/);
+  assert.match(appService, /WebDrafts__TrustCloudflareConnectingIp:\s*toLower\(string\(effectiveWebDraftsTrustCloudflareConnectingIp\)\)/);
   assert.ok(dataApi.required.includes("WebDrafts__PlaceSuggestionsPaused"));
   assert.equal(dataApi.mustEqual.WebDrafts__PlaceSuggestionsPaused, "true");
   assert.ok(manifest.deployments.main.allowedNewSettings["app-invi-data-api-prod-001"].includes("WebDrafts__PlaceSuggestionsPaused"));

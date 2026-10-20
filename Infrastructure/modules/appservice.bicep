@@ -108,6 +108,10 @@ var dataApiDiagnosticCategories = [
 ]
 var dataApiTags = union(tags, { '${appInsightsLinkTag}': replace(dataAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
 var authApiTags = union(tags, { '${appInsightsLinkTag}': replace(authAppInsightsId, 'Microsoft.Insights', 'microsoft.insights') })
+// Client-IP restoration is never left on when the origin is open. This is an
+// effective value, rather than a validation-only rule, so an incomplete
+// rollback parameter change fails safe at the App Setting itself.
+var effectiveWebDraftsTrustCloudflareConnectingIp = dataApiCloudflareOriginLockEnabled && webDraftsTrustCloudflareConnectingIp
 
 // Source: https://www.cloudflare.com/ips (read 2026-10-20). These ranges are
 // shared by all Cloudflare zones; the WebDrafts application gate separately
@@ -276,7 +280,7 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // Lower case, as production has them. They were set by hand before; carried here because this resource replaces the
     // whole settings bag and would otherwise drop them.
     WebDrafts__RequireCaptcha: toLower(string(webDraftsRequireCaptcha))
-    WebDrafts__TrustCloudflareConnectingIp: toLower(string(webDraftsTrustCloudflareConnectingIp))
+    WebDrafts__TrustCloudflareConnectingIp: toLower(string(effectiveWebDraftsTrustCloudflareConnectingIp))
     WebDrafts__PlaceSuggestionsPaused: toLower(string(webDraftsPlaceSuggestionsPaused))
     PlaceSuggestions__Enabled: toLower(string(placeSuggestionsEnabled))
 

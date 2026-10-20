@@ -211,6 +211,12 @@ Når `dataApiCloudflareOriginLockEnabled` har vært `true`, skal en rollback **i
 `ipSecurityRestrictions` fra malen eller med et manuelt portal-kall. Sett parameteren til `false` i en godkjent PR og bruk
 samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
 `ipSecurityRestrictionsDefaultAction: 'Allow'`; det fjerner de navngitte Cloudflare-reglene i stedet for å la dem bli stående.
+Den effektive verdien av `WebDrafts__TrustCloudflareConnectingIp` er bundet til origin-locken, slik at den blir `false` når
+origin-locken er `false`, selv om parameteren feilaktig ikke ble slått av samtidig.
+
+Gjør rollback i to deployer: først sett `webDraftsTrustCloudflareConnectingIp=false` mens origin-locken fortsatt er på, og
+verifiser den kjørende appinnstillingen. Først deretter settes `dataApiCloudflareOriginLockEnabled=false`. Dette eliminerer
+også et eventuelt ordensvindu mellom oppdateringen av App Settings og siteConfig i ARM.
 
 Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment main --dry-run` bestå og rapporten vise at bare
 Data API-ets hovedrestriksjoner går fra Cloudflare-listen/`Deny` til tom liste/`Allow`. `scmIpSecurityRestrictions` og
