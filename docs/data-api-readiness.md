@@ -1,8 +1,9 @@
 # Data API readiness controls
 
-Production explicitly sets both `dataApiReadinessWarmupEnabled=false` and `dataApiHealthCheckEnabled=false` in
-`Infrastructure/environments/prod.bicepparam`. Merging these independent controls activates neither feature. Both target
-the database-backed `/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
+This activation proposal sets `dataApiReadinessWarmupEnabled=true` and leaves `dataApiHealthCheckEnabled=false` in
+`Infrastructure/environments/prod.bicepparam`. Merging IaC code does not deploy it, but a later **main** Bicep deployment
+would activate startup warm-up. Do not merge or deploy this proposal before the gates below pass and separate approval is
+given. Both controls target the database-backed `/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
 
 | Control | When enabled | When disabled again |
 | --- | --- | --- |
@@ -19,14 +20,26 @@ can delay or fail startup. Do not deploy an older API without `/v1/extras/ready`
 1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through the App Service default hostname,
    without a redirect, and that its revision is the reviewed release. Confirm the authorized operator has all required secure
    deployment inputs without printing their values.
-2. In a separate activation PR, change **only the chosen production parameter**. A warm-up activation needs safety-manifest
-   permission for exactly the two new `WEBSITE_WARMUP_*` settings. A Health Check activation needs permission for exactly
-   the `healthCheckPath` change. This code-only PR grants neither permission.
+2. The warm-up activation PR may change only its production parameter and permit exactly the two new `WEBSITE_WARMUP_*`
+   settings in the safety manifest. It must not permit a Health Check path change. Health Check requires a later, separate PR.
 3. Run offline validation and a fresh read-only what-if/safety gate with the complete main template and real secure inputs.
    Review all drift and expected resource changes, including the complete App Settings bag; do not assume this parameter is
    the only change in an un-deployed template. Obtain separate deployment approval.
 4. After each activation, verify repeated readiness responses and the actual App Service configuration. An external 200
    before activation alone cannot prove Azure's internal Health Check probes succeed.
+
+The full `main` template also writes Auth API and other resources. The 2026-10-20 baseline gate found
+`WebDrafts__PlaceSuggestionsPaused` missing live and would add it as `true`; this is a separate setting change even though it
+pauses suggestions. The what-if reported `Modify` for Auth API site/appsettings/networkConfig, Data API equivalents,
+Application Insights components, a private endpoint and DNS group, and a diagnostic setting. The gate classified their
+reported deltas as platform noise or compared settings separately, but that does not prove an ARM write cannot recycle an
+app. Do not approve unrelated resource writes implicitly. Before deployment, review fresh, complete what-if evidence and
+decide whether a narrower Data API-only deployment path is required.
+
+The complete Data API App Settings bag also requires `REVENUECAT_SECRET_API_KEY` and
+`REVENUECAT_WEBHOOK_AUTHORIZATION` in the authorized deploying shell. Run
+`Infrastructure/scripts/verify-secure-parameters.sh --deployment main`; require `MATCH` for both without recording values.
+The review shell on 2026-10-20 had neither variable, so this prerequisite is **not yet satisfied**.
 
 ## Rollback
 

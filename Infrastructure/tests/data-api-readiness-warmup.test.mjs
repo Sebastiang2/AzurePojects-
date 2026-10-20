@@ -4,12 +4,16 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("production and template defaults keep both readiness controls disabled", () => {
+test("production enables only warm-up while template defaults remain disabled", () => {
   const parameters = read("environments/prod.bicepparam");
   const main = read("main.bicep");
   const module = read("modules/appservice.bicep");
-  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = false$/m);
+  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = true$/m);
   assert.match(parameters, /^param dataApiHealthCheckEnabled = false$/m);
+  for (const disabled of ["webDraftsEnabled", "webDraftsTrustCloudflareConnectingIp", "dataApiCloudflareOriginLockEnabled", "placeSuggestionsEnabled"]) {
+    assert.match(parameters, new RegExp(`^param ${disabled} = false$`, "m"));
+  }
+  assert.match(parameters, /^param webDraftsPlaceSuggestionsPaused = true$/m);
   for (const source of [main, module]) {
     assert.match(source, /^param dataApiReadinessWarmupEnabled bool = false$/m);
     assert.match(source, /^param dataApiHealthCheckEnabled bool = false$/m);
@@ -37,11 +41,13 @@ test("startup warm-up independently requires HTTP 200 from the readiness endpoin
   assert.doesNotMatch(module, /dataApiHealthCheckEnabled \? \{\s*WEBSITE_WARMUP_PATH/);
 });
 
-test("code-only PR grants no safety-manifest permission to activate either control", () => {
+test("activation permits only the two warm-up settings, not Health Check", () => {
   const manifest = JSON.parse(read("safety/manifest.json"));
   const main = manifest.deployments.main;
   const settings = main.allowedNewSettings?.["app-invi-data-api-prod-001"] ?? [];
-  assert.ok(!settings.includes("WEBSITE_WARMUP_PATH"));
-  assert.ok(!settings.includes("WEBSITE_WARMUP_STATUSES"));
+  assert.deepEqual(settings.filter((setting) => setting.startsWith("WEBSITE_WARMUP_")), [
+    "WEBSITE_WARMUP_PATH",
+    "WEBSITE_WARMUP_STATUSES",
+  ]);
   assert.ok(!(main.allowedChanges ?? []).some((change) => change.property === "siteConfig.healthCheckPath"));
 });

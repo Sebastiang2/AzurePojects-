@@ -533,7 +533,9 @@
         "app-invi-data-api-prod-001": [
           "PlaceSuggestions__Enabled",
           "WebDrafts__PlaceSuggestionsPaused",
-          "ADMIN_ACTIVITY_CREATOR_ID"
+          "ADMIN_ACTIVITY_CREATOR_ID",
+          "WEBSITE_WARMUP_PATH",
+          "WEBSITE_WARMUP_STATUSES"
         ]
       },
       "allowedRemovedSettings": {},
