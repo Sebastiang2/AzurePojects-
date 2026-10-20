@@ -20,8 +20,9 @@ can delay or fail startup. Do not deploy an older API without `/v1/extras/ready`
 1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through the App Service default hostname,
    without a redirect, and that its revision is the reviewed release. Confirm the authorized operator has all required secure
    deployment inputs without printing their values.
-2. The warm-up activation PR may change only its production parameter and permit exactly the two new `WEBSITE_WARMUP_*`
-   settings in the safety manifest. It must not permit a Health Check path change. Health Check requires a later, separate PR.
+2. The warm-up activation PR may change only its production parameter and permit adding or removing exactly the two
+   `WEBSITE_WARMUP_*` settings in the safety manifest. The removal permission supports rollback; it does not authorize a
+   Health Check path change. Health Check requires a later, separate PR.
 3. Run offline validation and a fresh read-only what-if/safety gate with the complete main template and real secure inputs.
    Review all drift and expected resource changes, including the complete App Settings bag; do not assume this parameter is
    the only change in an un-deployed template. Obtain separate deployment approval.
@@ -43,8 +44,8 @@ The review shell on 2026-10-20 had neither variable, so this prerequisite is **n
 
 ## Rollback
 
-Set **only the affected control** back to `false` in a reviewed rollback PR, with narrowly scoped safety-manifest permission
-for the reverse change. Warm-up rollback removes both `WEBSITE_WARMUP_*` settings; Health Check rollback clears
+Set **only the affected control** back to `false` in a reviewed rollback PR. The manifest already permits removing just the
+two `WEBSITE_WARMUP_*` settings; Health Check rollback clears
 `healthCheckPath`. Confirm the exact reverse change in a fresh what-if/safety gate, provide secure inputs, and obtain separate
 deployment approval. The configuration deployment can recycle the Data API, so allow for a brief interruption and verify
 health afterward. Neither rollback has been exercised in production. If reverting API code to a revision without `/ready`,

@@ -538,7 +538,12 @@
           "WEBSITE_WARMUP_STATUSES"
         ]
       },
-      "allowedRemovedSettings": {},
+      "allowedRemovedSettings": {
+        "app-invi-data-api-prod-001": [
+          "WEBSITE_WARMUP_PATH",
+          "WEBSITE_WARMUP_STATUSES"
+        ]
+      },
       "allowedChanges": [],
       "residualRisks": [],
       "touches": [

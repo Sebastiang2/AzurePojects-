@@ -49,5 +49,9 @@ test("activation permits only the two warm-up settings, not Health Check", () =>
     "WEBSITE_WARMUP_PATH",
     "WEBSITE_WARMUP_STATUSES",
   ]);
+  assert.deepEqual(main.allowedRemovedSettings?.["app-invi-data-api-prod-001"], [
+    "WEBSITE_WARMUP_PATH",
+    "WEBSITE_WARMUP_STATUSES",
+  ]);
   assert.ok(!(main.allowedChanges ?? []).some((change) => change.property === "siteConfig.healthCheckPath"));
 });
