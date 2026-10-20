@@ -47,6 +47,9 @@ param dataApiCloudflareOriginLockEnabled bool = false
 param webDraftsPlaceSuggestionsPaused bool = true
 param placeSuggestionsEnabled bool = false
 
+@description('Enables Data API readiness warm-up and Health Check on /v1/extras/ready. Keep false until the matching API endpoint has been deployed and reviewed.')
+param dataApiReadinessWarmupEnabled bool = false
+
 @description('Verified UserTable.UserId for editorial activities in the Data API. Zero leaves ADMIN_ACTIVITY_CREATOR_ID unset.')
 @minValue(0)
 param dataApiActivityCreatorId int = 0
@@ -202,6 +205,9 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
       vnetRouteAllEnabled: true
 
       alwaysOn: true
+      // Health Check only receives 200 after the API's readiness endpoint has verified its database dependency.
+      // Null removes the Health Check path on rollback; do not substitute the liveness-only is-up endpoint.
+      healthCheckPath: dataApiReadinessWarmupEnabled ? '/v1/extras/ready' : null
       http20Enabled: true
       webSocketsEnabled: true
 
@@ -295,7 +301,14 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // Literal App Settings in production today, not Key Vault references.
     RevenueCat__SecretApiKey: revenueCatSecretApiKey
     RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
-  }, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
+
+    // These settings make App Service wait for the API readiness endpoint to return 200 before considering a new
+    // worker warm. They are deliberately emitted only with the separately approved switch. This config resource
+    // is the complete desired app-settings bag, so setting the switch back to false removes both settings again.
+  }, dataApiReadinessWarmupEnabled ? {
+    WEBSITE_WARMUP_PATH: '/v1/extras/ready'
+    WEBSITE_WARMUP_STATUSES: '200'
+  } : {}, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
 }
 
 // intergration

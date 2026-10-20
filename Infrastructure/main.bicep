@@ -114,6 +114,9 @@ param webDraftsPlaceSuggestionsPaused bool = true
 // "Foreslå et sted" needs BOTH webDraftsEnabled and this one (Data API AND-gate). Off unless set.
 param placeSuggestionsEnabled bool = false
 
+@description('Enables Data API readiness warm-up and Health Check on /v1/extras/ready. Keep false until the matching API endpoint has been deployed and reviewed.')
+param dataApiReadinessWarmupEnabled bool = false
+
 // UserTable.UserId of the dedicated, verified Invi Activities system user.
 // Zero preserves today's configuration; set the real id only after the DB check.
 @minValue(0)
@@ -311,6 +314,7 @@ module appService 'modules/appservice.bicep' = {
     dataApiCloudflareOriginLockEnabled: dataApiCloudflareOriginLockEnabled
     webDraftsPlaceSuggestionsPaused: webDraftsPlaceSuggestionsPaused
     placeSuggestionsEnabled: placeSuggestionsEnabled
+    dataApiReadinessWarmupEnabled: dataApiReadinessWarmupEnabled
     dataApiActivityCreatorId: dataApiActivityCreatorId
     dataApiCustomDomain: dataApiCustomDomain
     dataApiCertificateName: dataApiCertificateName
