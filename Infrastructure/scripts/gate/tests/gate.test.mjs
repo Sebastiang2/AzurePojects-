@@ -69,6 +69,35 @@ test("a desired bag that cannot be evaluated is rejected, not skipped", () => {
   failsWith(r, "BAG-UNEVALUATED");
 });
 
+test("a settings-only deployment still checks its full bag and rejects unapproved drift", () => {
+  const settingsOnly = (w) => {
+    w.desiredResources = w.desiredResources.filter((resource) => resource.type !== "Microsoft.Web/sites");
+    w.whatif.changes = w.whatif.changes.filter((change) => change.type !== "Microsoft.Web/sites");
+  };
+  const baseline = run(mutate(settingsOnly));
+  assert.equal(baseline.verdict, "PASS", JSON.stringify(ids(baseline)));
+  const drift = run(mutate((w) => {
+    settingsOnly(w);
+    w.live.apps["app-test"].appsettings.push({ name: "LIVE_ONLY", kind: "plain", value: "1", slotSetting: false });
+  }));
+  failsWith(drift, "BAG-LIVE-ONLY");
+});
+
+test("settings-only rollback removes only an explicitly permitted warm-up setting", () => {
+  const withLiveWarmup = (w) => {
+    w.desiredResources = w.desiredResources.filter((resource) => resource.type !== "Microsoft.Web/sites");
+    w.whatif.changes = w.whatif.changes.filter((change) => change.type !== "Microsoft.Web/sites");
+    w.live.apps["app-test"].appsettings.push({ name: "WEBSITE_WARMUP_PATH", kind: "plain", value: "/v1/extras/ready", slotSetting: false });
+  };
+  failsWith(run(mutate(withLiveWarmup)), "BAG-LIVE-ONLY");
+  const reviewed = run(mutate((w) => {
+    withLiveWarmup(w);
+    w.manifest.deployments.main.allowedRemovedSettings = { "app-test": ["WEBSITE_WARMUP_PATH"] };
+  }));
+  assert.equal(reviewed.verdict, "PASS", JSON.stringify(ids(reviewed)));
+  assert.ok(ids(reviewed, "allowed").includes("BAG-REMOVED"));
+});
+
 // ---- network ------------------------------------------------------------------------------------------------------------
 test("a subnet that would be removed is rejected", () => {
   const r = run(mutate((w) => w.live.subnets.push({ name: "snet-migration-temp", addressPrefix: "10.0.4.0/24", ipConfigurations: [{ id: "nic" }], privateEndpointNetworkPolicies: "Disabled", privateLinkServiceNetworkPolicies: "Enabled" })));

@@ -149,8 +149,15 @@ function checkAccessRules(ctx, name, sc, l) {
 
 export function checkAppSettings(ctx) {
   const { desired, live, manifest, findings } = ctx;
-  for (const site of desired.ofType("Microsoft.Web/sites")) {
-    const name = site.name;
+  // A settings-only deployment references an existing site without writing the site resource. Its complete appsettings
+  // bag still needs every fail-closed comparison below; iterating only declared sites would silently skip it.
+  const siteNames = new Set([
+    ...desired.ofType("Microsoft.Web/sites").map((site) => site.name),
+    ...desired.ofType("Microsoft.Web/sites/config")
+      .filter((resource) => /\/appsettings$/i.test(resource.name))
+      .map((resource) => resource.name.replace(/\/appsettings$/i, "")),
+  ]);
+  for (const name of siteNames) {
     const bagResource = desired.find("Microsoft.Web/sites/config", `${name}/appsettings`);
     const appManifest = manifest.apps?.[name] ?? {};
     if (!bagResource) {

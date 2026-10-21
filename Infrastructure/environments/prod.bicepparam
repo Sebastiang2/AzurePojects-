@@ -85,6 +85,11 @@ param webDraftsPlaceSuggestionsPaused = true
 // "Foreslå et sted" needs this AND webDraftsEnabled. Off.
 param placeSuggestionsEnabled = false
 
+// Full main deployments must never activate or remove startup warm-up as a side effect.
+// Use only the reviewed data-api-warmup deployment target for activation and rollback.
+param dataApiReadinessWarmupEnabled = false
+param dataApiHealthCheckEnabled = false
+
 // UserId of the 'Invi Activities' system user (Provider='System') created by the approved Core DB migration.
 // Zero would leave ADMIN_ACTIVITY_CREATOR_ID unset. Changing it restarts only the Data API on the next main deploy.
 param dataApiActivityCreatorId = 1636

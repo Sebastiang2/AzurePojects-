@@ -47,6 +47,12 @@ param dataApiCloudflareOriginLockEnabled bool = false
 param webDraftsPlaceSuggestionsPaused bool = true
 param placeSuggestionsEnabled bool = false
 
+@description('Enables Data API startup warm-up on /v1/extras/ready with HTTP 200 required. Independent of Health Check.')
+param dataApiReadinessWarmupEnabled bool = false
+
+@description('Enables Data API Health Check on /v1/extras/ready. Independent of startup warm-up.')
+param dataApiHealthCheckEnabled bool = false
+
 @description('Verified UserTable.UserId for editorial activities in the Data API. Zero leaves ADMIN_ACTIVITY_CREATOR_ID unset.')
 @minValue(0)
 param dataApiActivityCreatorId int = 0
@@ -202,6 +208,8 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
       vnetRouteAllEnabled: true
 
       alwaysOn: true
+      // Independently controlled from startup warm-up. Null clears the Health Check path on rollback.
+      healthCheckPath: dataApiHealthCheckEnabled ? '/v1/extras/ready' : null
       http20Enabled: true
       webSocketsEnabled: true
 
@@ -295,7 +303,13 @@ resource dataApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     // Literal App Settings in production today, not Key Vault references.
     RevenueCat__SecretApiKey: revenueCatSecretApiKey
     RevenueCat__WebhookAuthorization: revenueCatWebhookAuthorization
-  }, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
+
+    // Startup warm-up waits for HTTP 200 from the database-backed readiness endpoint. This switch does not change
+    // Health Check. The full desired app-settings bag removes both settings when the switch is rolled back to false.
+  }, dataApiReadinessWarmupEnabled ? {
+    WEBSITE_WARMUP_PATH: '/v1/extras/ready'
+    WEBSITE_WARMUP_STATUSES: '200'
+  } : {}, dataApiActivityCreatorId > 0 ? { ADMIN_ACTIVITY_CREATOR_ID: string(dataApiActivityCreatorId) } : {})
 }
 
 // intergration
