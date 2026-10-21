@@ -220,11 +220,9 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
 
       scmMinTlsVersion: '1.2'
     }, {
-      // This is intentionally explicit in both states. App Service keeps access
-      // restrictions that a later PUT omits, so merely removing these fields
-      // would not be a rollback after the lock has once been enabled.
-      // An empty list together with Allow removes the named Cloudflare rules and
-      // restores the normal public API perimeter. SCM remains separate below.
+      // Declare both states so a later full main deployment preserves the selected
+      // perimeter. The safety gate rejects transitions through main; use the
+      // separately reviewed PATCH path for activation or rollback.
       ipSecurityRestrictions: dataApiCloudflareOriginLockEnabled ? cloudflareOriginAccessRestrictions : []
       ipSecurityRestrictionsDefaultAction: dataApiCloudflareOriginLockEnabled ? 'Deny' : 'Allow'
       // Publishing access is a separate surface. Do not inherit the main-site lock onto Kudu/SCM.

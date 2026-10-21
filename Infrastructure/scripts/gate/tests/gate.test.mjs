@@ -434,17 +434,14 @@ test("implicit live Allow to explicit Allow is accepted only for an empty unlock
   })), "WHATIF-ORIGIN-LOCK");
 });
 
-test("an exact Cloudflare-only main-site transition passes without changing SCM", () => {
+test("an exact Cloudflare-only main-site transition is blocked through the full main deployment", () => {
   const report = run(mutate((w) => originLockWorld(w)));
-  assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
-  assert.ok(ids(report, "allowed").includes("ACCESS-ORIGIN-NEW"));
-  assert.ok(ids(report, "allowed").includes("WHATIF-ORIGIN-LOCK"));
+  failsWith(report, "ORIGIN-MAIN-TRANSITION");
 });
 
-test("origin-lock rollback explicitly removes only the reviewed rule and restores Allow", () => {
+test("origin-lock rollback is also blocked through the full main deployment", () => {
   const report = run(mutate((w) => originLockWorld(w, true)));
-  assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
-  assert.ok(ids(report, "allowed").includes("ACCESS-ORIGIN-ROLLBACK"));
+  failsWith(report, "ORIGIN-MAIN-TRANSITION");
 });
 
 test("an altered Cloudflare range, unrelated rule or SCM lock fails closed", () => {
@@ -470,65 +467,6 @@ test("an altered Cloudflare range, unrelated rule or SCM lock fails closed", () 
   })), "ACCESS-RULE-REMOVED");
 });
 
-const scopedOriginWorld = (w, state) => {
-  const app = w.live.apps["app-test"];
-  const rollback = state === "rollback";
-  const baseline = state === "baseline";
-  app.config.ipSecurityRestrictionsDefaultAction = rollback ? "Deny" : null;
-  app.config.scmIpSecurityRestrictionsUseMain = false;
-  app.accessrestrictions.scmIpSecurityRestrictionsUseMain = false;
-  app.accessrestrictions.ipSecurityRestrictions = rollback ? [structuredClone(cloudflareRule)] : [];
-  w.manifest.defaults.siteConfig = { ipSecurityRestrictionsDefaultAction: "Allow" };
-  const deployment = w.manifest.deployments.main;
-  deployment.originLock = { resource: "app-test", why: "Only the complete reviewed rule list may change",
-    requiredLiveAppSettings: { WebDrafts__Enabled: "false" }, rules: [structuredClone(cloudflareRule)] };
-  app.appsettings.push({ name: "WebDrafts__Enabled", kind: "plain", value: "false", slotSetting: false });
-  deployment.touches = [{ type: "Microsoft.Web/sites/config", name: "app-test/web" }];
-  w.desiredResources = [{ type: "Microsoft.Web/sites/config", name: "app-test/web", properties: {
-    ipSecurityRestrictions: state === "enable" ? [structuredClone(cloudflareRule)] : [],
-    ipSecurityRestrictionsDefaultAction: state === "enable" ? "Deny" : "Allow",
-  } }];
-  w.whatif.changes = [{ type: "Microsoft.Web/sites/config", name: "app-test/web", changeType: "Modify", deltas: baseline ? [
-    { path: "properties.ipSecurityRestrictions", op: "Delete", before: { kind: "array", length: 1, names: ["Allow all"] } },
-    { path: "properties.ipSecurityRestrictionsDefaultAction", op: "Create", before: null, after: "Allow" },
-  ] : rollback ? [
-    { path: "properties.ipSecurityRestrictions", op: "Delete", before: { kind: "array", length: 1, names: [cloudflareRule.name] } },
-    { path: "properties.ipSecurityRestrictionsDefaultAction", op: "Create", before: null, after: "Allow" },
-  ] : [
-    { path: "properties.ipSecurityRestrictions[0]", op: "Modify", before: { kind: "object", name: "Allow all" }, after: { kind: "object", name: cloudflareRule.name } },
-    { path: "properties.ipSecurityRestrictionsDefaultAction", op: "Create", before: null, after: "Deny" },
-  ] }];
-};
-
-test("scoped origin web config accepts exact disabled, enable and rollback states", () => {
-  for (const state of ["baseline", "enable", "rollback"]) {
-    const report = run(mutate((w) => scopedOriginWorld(w, state)));
-    assert.equal(report.verdict, "PASS", `${state}: ${JSON.stringify(ids(report))}`);
-  }
-});
-
-test("scoped origin web config rejects SCM writes, partial ranges and inherited SCM access", () => {
-  failsWith(run(mutate((w) => {
-    scopedOriginWorld(w, "enable");
-    w.whatif.changes[0].deltas.push({ path: "properties.scmIpSecurityRestrictionsUseMain", op: "Modify", before: false, after: true });
-  })), "WHATIF-UNEXPECTED-CHANGE");
-  failsWith(run(mutate((w) => {
-    scopedOriginWorld(w, "enable");
-    w.desiredResources[0].properties.ipSecurityRestrictions[0].ipAddress = "0.0.0.0/0";
-  })), "ACCESS-ORIGIN-SET");
-  failsWith(run(mutate((w) => {
-    scopedOriginWorld(w, "enable");
-    w.live.apps["app-test"].config.scmIpSecurityRestrictionsUseMain = true;
-  })), "ORIGIN-SCM-INHERIT");
-  failsWith(run(mutate((w) => {
-    scopedOriginWorld(w, "enable");
-    w.desiredResources[0].properties.scmIpSecurityRestrictions = [];
-  })), "ORIGIN-WEB-SCOPE");
-  failsWith(run(mutate((w) => {
-    scopedOriginWorld(w, "enable");
-    w.live.apps["app-test"].appsettings.find((s) => s.name === "WebDrafts__Enabled").value = "true";
-  })), "ORIGIN-LIVE-SETTING");
-});
 
 test("values of secret-looking settings never appear in report messages", () => {
   const w = mutate((x) => {

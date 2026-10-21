@@ -15,7 +15,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Findings, canonical, readJson, sha256, lc } from "./lib/util.mjs";
 import { loadDesired, loadLive } from "./lib/model.mjs";
-import { checkSites, checkOriginWebConfig, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
+import { checkSites, originLockTransition, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
 import { checkNetwork, checkDiagnostics, checkDataAndVault, checkRbac, checkIdentities, checkStaticSites } from "./lib/checks-infra.mjs";
 import { evaluateWhatIf } from "./lib/whatif.mjs";
 
@@ -175,7 +175,10 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
   let whatIfSummary = { noise: {}, counts: {} };
   if (desired.ok) {
     checkSites(ctx);
-    checkOriginWebConfig(ctx);
+    if (deploymentKey === "main" && deployment.originLock && originLockTransition(ctx, deployment.originLock.resource)) {
+      findings.fail("ORIGIN-MAIN-TRANSITION", deployment.originLock.resource,
+        "a full main deployment may not activate or roll back the origin lock; prepare a scoped PATCH with separate approval");
+    }
     checkAppSettings(ctx);
     checkSlotSettings(ctx);
     checkAuthSettings(ctx);

@@ -93,14 +93,12 @@ export function evaluateWhatIf(ctx) {
           // The reduced what-if hides array bodies. Accept only a whole, manifest-exact transition independently
           // verified against the desired snapshot and live access rules; never exempt SCM or another site.
           const originSite = deployment.originLock?.resource;
-          const scopedOrigin = lc(change.type) === "microsoft.web/sites/config" && lc(change.name) === lc(`${originSite}/web`);
           const fullOrigin = lc(change.type) === "microsoft.web/sites" && lc(change.name) === lc(originSite);
-          const originPrefix = scopedOrigin ? "properties." : "properties.siteConfig.";
-          if ((scopedOrigin || fullOrigin) &&
+          const originPrefix = "properties.siteConfig.";
+          if (fullOrigin &&
             new RegExp(`^${originPrefix.replaceAll(".", "\\.")}ipSecurityRestrictions(?:DefaultAction|(?:\\[\\d+\\])?(?:\\.[A-Za-z]+)?)$`).test(d.path)) {
             const desiredSite = ctx.desired.find("Microsoft.Web/sites", originSite);
-            const desiredWeb = ctx.desired.find("Microsoft.Web/sites/config", `${originSite}/web`);
-            const desiredConfig = desiredSite?.properties?.siteConfig ?? desiredWeb?.properties;
+            const desiredConfig = desiredSite?.properties?.siteConfig;
             const liveSite = live.apps[originSite];
             const liveRules = (liveSite?.accessrestrictions?.ipSecurityRestrictions ?? liveSite?.config?.ipSecurityRestrictions ?? [])
               .filter((r) => Number(r.priority) !== 2147483647);
@@ -113,14 +111,6 @@ export function evaluateWhatIf(ctx) {
             if (baseline && d.path === `${originPrefix}ipSecurityRestrictionsDefaultAction` &&
               d.op === "Create" && d.before == null && lc(d.after) === "allow") {
               findings.allowed("WHATIF-ORIGIN-BASELINE", subject, `${d.path} makes the existing implicit Allow explicit while both main-site rule lists stay empty`);
-              continue;
-            }
-            // The scoped web config shows deletion of App Service's synthetic "Allow all"
-            // list when the disabled template explicitly declares an empty list.
-            if (scopedOrigin && baseline && d.path === "properties.ipSecurityRestrictions" && d.op === "Delete" &&
-              d.before?.kind === "array" && d.before.length === 1 && d.before.names?.length === 1 &&
-              lc(d.before.names[0]) === "allow all") {
-              findings.allowed("WHATIF-ORIGIN-BASELINE", subject, "the implicit Allow all rule is represented by an explicit empty main-site list");
               continue;
             }
             const transition = originLockTransition(ctx, originSite);

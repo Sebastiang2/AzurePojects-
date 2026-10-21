@@ -95,8 +95,5 @@ test("origin lock has the exact reviewed ranges and never applies main restricti
   assert.match(appService, /scmIpSecurityRestrictions: \[\]/);
   assert.match(appService, /scmIpSecurityRestrictionsDefaultAction: 'Allow'/);
   assert.match(appService, /scmIpSecurityRestrictionsUseMain: false/);
-  assert.deepEqual(deployment.allowedChanges.map(({ resource, property, before, after }) => ({ resource, property, before, after })), [
-    { resource: "app-invi-data-api-prod-001", property: "siteConfig.ipSecurityRestrictionsDefaultAction", before: "Allow", after: "Deny" },
-    { resource: "app-invi-data-api-prod-001", property: "siteConfig.ipSecurityRestrictionsDefaultAction", before: "Deny", after: "Allow" },
-  ]);
+  assert.deepEqual(deployment.allowedChanges, []);
 });

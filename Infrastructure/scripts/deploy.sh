@@ -3,7 +3,7 @@
 #
 #   Infrastructure/scripts/deploy.sh --deployment <key> [--dry-run] [--allow-non-main]
 #
-#   --deployment  key in Infrastructure/safety/manifest.json: main, data-api-origin-lock, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
+#   --deployment  key in Infrastructure/safety/manifest.json: main, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
 #                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol
 #   --dry-run     rehearsal: runs every check and the gate, prints what would be deployed and every reason a real run would
 #                 stop, and NEVER deploys (it also needs no terminal and tolerates a dirty tree and missing secure parameters,
@@ -82,7 +82,7 @@ DEPLOYMENT_NAME="$(field d.deploymentName)"
 SECURE="$(field d.secureEnvironment)"
 REQUIRED_BACKEND_REVISION="$(field d.requiredBackendRevision)"
 WARMUP_MODE=""
-if [ -n "$REQUIRED_BACKEND_REVISION" ] && [ "$DEPLOYMENT" != "data-api-origin-lock" ]; then
+if [ -n "$REQUIRED_BACKEND_REVISION" ]; then
   WARMUP_MODE="$(node -e '
 const fs = require("fs");
 const read = (file) => {
@@ -95,18 +95,6 @@ const dedicated = read(process.argv[1]);
 if (read(process.argv[2]) !== dedicated) process.exit(1);
 process.stdout.write(dedicated);
 ' "$(to_native "$REPO_ROOT/$PARAMETERS")" "$(to_native "$REPO_ROOT/Infrastructure/environments/prod.bicepparam")")" || block "main and dedicated production warm-up parameters must match explicitly."
-fi
-if [ "$DEPLOYMENT" = "data-api-origin-lock" ]; then
-  node -e '
-const fs = require("fs");
-const read = (path) => {
-  const matches = [...fs.readFileSync(path, "utf8").matchAll(/^param dataApiCloudflareOriginLockEnabled = (true|false)$/gm)];
-  if (matches.length !== 1) process.exit(1);
-  return matches[0][1];
-};
-if (read(process.argv[1]) !== read(process.argv[2])) process.exit(1);
-' "$(to_native "$REPO_ROOT/$PARAMETERS")" "$(to_native "$REPO_ROOT/Infrastructure/environments/prod.bicepparam")" \
-    || block "dedicated and canonical production origin-lock parameters must match explicitly."
 fi
 MAX_AGE="$(field top.maxEvidenceAgeMinutes)"
 MAX_AGE="${MAX_AGE:-30}"
@@ -162,12 +150,6 @@ if [ "$WARMUP_MODE" = "true" ]; then
   echo "Verifying the currently running Data API before changing its App Settings..."
   if ! node "$HERE/verify-data-api-ready.mjs" "$REQUIRED_BACKEND_REVISION" 3 3; then
     block "Data API readiness or approved backend revision did not pass before the configuration change."
-  fi
-fi
-if [ "$DEPLOYMENT" = "data-api-origin-lock" ]; then
-  echo "Verifying public Data API readiness and the approved revision before changing origin access..."
-  if ! node "$HERE/verify-data-api-ready.mjs" "$REQUIRED_BACKEND_REVISION" 3 3; then
-    block "public Data API readiness or approved backend revision did not pass before the origin access change."
   fi
 fi
 
@@ -281,12 +263,6 @@ elif [ "$WARMUP_MODE" = "false" ]; then
   echo "Warm-up rollback: checking liveness after removal, without requiring /ready or a particular backend revision..."
   node "$HERE/verify-data-api-ready.mjs" --liveness 30 3 || {
     echo "ERROR: warm-up settings were removed, but Data API liveness did not recover. Investigate; do not deploy again automatically." >&2
-    exit 1
-  }
-elif [ "$DEPLOYMENT" = "data-api-origin-lock" ]; then
-  echo "Verifying public Data API readiness after the scoped origin access change..."
-  node "$HERE/verify-data-api-ready.mjs" "$REQUIRED_BACKEND_REVISION" 30 3 || {
-    echo "ERROR: public Data API readiness did not recover at the approved revision. Stop and investigate; do not deploy again automatically." >&2
     exit 1
   }
 fi

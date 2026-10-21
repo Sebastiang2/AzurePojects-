@@ -72,26 +72,14 @@ test("dedicated deployment can write only Data API App Settings", () => {
   assert.match(template, /dataApiReadinessWarmupEnabled \? \{\s*WEBSITE_WARMUP_PATH:\s*'\/v1\/extras\/ready'\s*WEBSITE_WARMUP_STATUSES:\s*'200'\s*\} : \{\}/);
 });
 
-test("dedicated origin-lock deployment declares only the Data API main-site perimeter", () => {
+test("unsafe sparse web configuration deployment is absent", () => {
   const manifest = JSON.parse(read("safety/manifest.json"));
-  const deployment = manifest.deployments["data-api-origin-lock"];
-  const template = read("data-api-origin-lock.bicep");
-  const parameters = read("environments/prod.data-api-origin-lock.bicepparam");
-  assert.deepEqual(deployment.touches, [{ type: "Microsoft.Web/sites/config", name: "app-invi-data-api-prod-001/web" }]);
-  assert.deepEqual(deployment.secureEnvironment, []);
-  assert.deepEqual(deployment.allowedChanges, []);
-  assert.match(parameters, /^param dataApiCloudflareOriginLockEnabled = false$/m);
-  assert.match(template, /resource dataApi 'Microsoft\.Web\/sites@2024-11-01' existing/);
-  assert.match(template, /resource originAccess 'Microsoft\.Web\/sites\/config@2024-11-01'/);
-  assert.doesNotMatch(template, /appsettings|scmIpSecurityRestrictions|WEBSITE_WARMUP|healthCheckPath|resource authApi/i);
-  const names = [...template.matchAll(/^\s+([A-Za-z]+): dataApiCloudflareOriginLockEnabled \?/gm)].map((m) => m[1]).sort();
-  assert.deepEqual(names, ["ipSecurityRestrictions", "ipSecurityRestrictionsDefaultAction"]);
-  const rules = (source) => [...source.matchAll(/\{ name: '([^']+)', priority: (\d+), action: '([^']+)', ipAddress: '([^']+)' \}/g)]
-    .map((m) => ({ name: m[1], priority: Number(m[2]), action: m[3], ipAddress: m[4] }));
-  assert.deepEqual(rules(template), deployment.originLock.rules);
-  assert.deepEqual(rules(read("modules/appservice.bicep")), deployment.originLock.rules);
-  assert.deepEqual(manifest.deployments.main.originLock.rules, deployment.originLock.rules);
+  assert.equal(manifest.deployments["data-api-origin-lock"], undefined);
+  const deploy = read("scripts/deploy.sh");
+  assert.doesNotMatch(deploy, /data-api-origin-lock/);
+  assert.match(read("scripts/origin-lock-patch-plan.mjs"), /method: "PATCH"/);
 });
+
 
 test("dedicated full settings bag keeps the canonical Data API setting names", () => {
   const keys = (source) => {
