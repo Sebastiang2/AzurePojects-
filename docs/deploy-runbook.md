@@ -218,10 +218,15 @@ plattformens interne warm-up fortsatt virker under restriksjonene. SCM skal beho
 
 Sikkerhetsgaten tillater bare de 15 IPv4- og 7 IPv6-nettene i manifestet og nøyaktig overgang `Allow` → `Deny` for
 Data API-hovedsiden. Sammenlign listen med https://www.cloudflare.com/ips-v4 og https://www.cloudflare.com/ips-v6
-rett før aktivering. Kjør Bicep-validering, `deploy.sh --deployment main --dry-run`, og les hele den saniterte what-if:
-ingen endring i warm-up, App Settings, Auth API, Key Vault, database, SCM eller andre ressurser kan aksepteres. En
-separat godkjent parameterendring må sette `dataApiCloudflareOriginLockEnabled=true`; WebDrafts, CF-IP-tillit og
-PlaceSuggestions forblir av, og PlaceSuggestions forblir pauset.
+rett før aktivering. Kjør Bicep-validering og `deploy.sh --deployment main --dry-run` for å kontrollere den kanoniske
+konfigurasjonen. Bruk deretter **bare** `deploy.sh --deployment data-api-origin-lock --dry-run` som aktiveringsgate:
+`main`-malen omfatter også App Settings, Auth API og annen infrastruktur og er ikke en avgrenset origin-lock-deploy.
+Den dedikerte malens saniterte what-if skal vise bare `app-invi-data-api-prod-001/web` og hovedsidens
+`ipSecurityRestrictions`/`ipSecurityRestrictionsDefaultAction`; enhver endring i warm-up, App Settings, Auth API,
+Key Vault, database, SCM eller andre ressurser stopper aktiveringen. En separat godkjent parameterendring må sette
+`dataApiCloudflareOriginLockEnabled=true` i `prod.data-api-origin-lock.bicepparam`, og den kanoniske
+`prod.bicepparam` må synkroniseres i samme review. WebDrafts, CF-IP-tillit og PlaceSuggestions forblir av, og
+PlaceSuggestions forblir pauset.
 
 Etter en godkjent origin-lock-deploy skal **offentlig** `https://api.cetchapp.com/v1/extras/ready` gi tre påfølgende
 HTTP 200 med godkjent SHA. `verify-data-api-ready.mjs` bruker derfor den offentlige ruten som standard. Direkte
@@ -231,17 +236,17 @@ SignalR-forhandling, SCM-tilgang, warm-up-innstillingene, 5xx og unntak. Stopp v
 
 Når `dataApiCloudflareOriginLockEnabled` har vært `true`, skal en rollback **ikke** gjøres ved å utelate
 `ipSecurityRestrictions` fra malen eller med et manuelt portal-kall. Sett parameteren til `false` i en godkjent PR og bruk
-samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
+den dedikerte `data-api-origin-lock`-sikkerhetsgaten. Malen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
 `ipSecurityRestrictionsDefaultAction: 'Allow'`; det fjerner de navngitte Cloudflare-reglene i stedet for å la dem bli stående.
 Den effektive verdien av `WebDrafts__TrustCloudflareConnectingIp` er bundet til origin-locken, slik at den blir `false` når
 origin-locken er `false`, selv om parameteren feilaktig ikke ble slått av samtidig.
 
 Med den nåværende grunnlinjen er `webDraftsTrustCloudflareConnectingIp=false`; en separat godkjent rollback kan da sette
-`dataApiCloudflareOriginLockEnabled=false` i én gated deploy. Hvis CF-IP-tillit er aktivert i en senere utrulling, gjør
+`dataApiCloudflareOriginLockEnabled=false` i én gated, avgrenset deploy. Hvis CF-IP-tillit er aktivert i en senere utrulling, gjør
 rollback i to deployer: sett først tilliten til `false` mens origin-locken fortsatt er på, verifiser den kjørende
 appinnstillingen, og sett deretter origin-locken til `false`. Det eliminerer et ordensvindu mellom App Settings og siteConfig.
 
-Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment main --dry-run` bestå og rapporten vise at bare
+Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment data-api-origin-lock --dry-run` bestå og rapporten vise at bare
 Data API-ets hovedrestriksjoner går fra Cloudflare-listen/`Deny` til tom liste/`Allow`. `scmIpSecurityRestrictions` og
 `scmIpSecurityRestrictionsUseMain=false` skal være uendret, slik at GitHub Actions/Kudu beholder sin egen tilgangsvei.
 Etter den godkjente deployen leses Access Restrictions på nytt: hovedsiden skal bare ha App Services implisitte «Allow all»,

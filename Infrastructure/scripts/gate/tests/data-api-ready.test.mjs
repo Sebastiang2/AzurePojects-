@@ -75,6 +75,14 @@ test("rollback liveness can recover without /ready or a revision header", async 
   assert.ok(result.calls.every((call) => call.url.includes("/v1/extras/is-up?")));
 });
 
+test("scoped origin deployment checks canonical flag parity and public readiness before and after", () => {
+  const script = readFileSync(new URL("../../deploy.sh", import.meta.url), "utf8");
+  assert.match(script, /dedicated and canonical production origin-lock parameters must match explicitly/);
+  assert.match(script, /Verifying public Data API readiness and the approved revision before changing origin access/);
+  assert.match(script, /Verifying public Data API readiness after the scoped origin access change/);
+  assert.doesNotMatch(script, /verify-data-api-ready\.mjs"[^\n]*--direct/);
+});
+
 test("deploy.sh checks the pinned revision both before and after its single deployment call", () => {
   const script = readFileSync(new URL("../../deploy.sh", import.meta.url), "utf8");
   const manifest = JSON.parse(readFileSync(new URL("../../../safety/manifest.json", import.meta.url), "utf8"));

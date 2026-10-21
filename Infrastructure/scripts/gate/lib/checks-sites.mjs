@@ -136,7 +136,8 @@ export function originLockTransition(ctx, siteName) {
   const lock = ctx.deployment.originLock;
   if (lc(lock?.resource) !== lc(siteName) || !Array.isArray(lock?.rules)) return null;
   const site = ctx.desired.find("Microsoft.Web/sites", siteName);
-  const sc = site?.properties?.siteConfig;
+  const web = ctx.desired.find("Microsoft.Web/sites/config", `${siteName}/web`);
+  const sc = site?.properties?.siteConfig ?? web?.properties;
   const want = sc?.ipSecurityRestrictions;
   const live = ctx.live.apps[siteName];
   if (!Array.isArray(want) || !live?.config) return null;
@@ -151,6 +152,49 @@ export function originLockTransition(ctx, siteName) {
     current.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r)) &&
     lc(liveDefault) === "deny" && lc(sc.ipSecurityRestrictionsDefaultAction) === "allow") return "rollback";
   return null;
+}
+
+/** A scoped deployment may touch only the existing Data API web config's main-site perimeter. */
+export function checkOriginWebConfig(ctx) {
+  const lock = ctx.deployment.originLock;
+  const web = lock && ctx.desired.find("Microsoft.Web/sites/config", `${lock.resource}/web`);
+  if (!web) return; // The full main deployment is checked by checkSites.
+  const { findings } = ctx;
+  if (ctx.desired.resources.length !== 1 ||
+    Object.keys(web.properties ?? {}).sort().join(",") !== "ipSecurityRestrictions,ipSecurityRestrictionsDefaultAction") {
+    findings.fail("ORIGIN-WEB-SCOPE", web.name, "scoped origin template must declare exactly the two main-site access properties and no other resources");
+    return;
+  }
+  const app = ctx.live.apps[lock.resource];
+  if (!app?.config || !app.accessrestrictions) {
+    findings.fail("EVIDENCE-SITE", lock.resource, "live Data API access restrictions could not be read");
+    return;
+  }
+  if (app.config.scmIpSecurityRestrictionsUseMain !== false || app.accessrestrictions.scmIpSecurityRestrictionsUseMain !== false) {
+    findings.fail("ORIGIN-SCM-INHERIT", lock.resource, "SCM must remain separate from the main-site access restrictions");
+  }
+  const liveSettings = new Map((app.appsettings ?? []).map((item) => [item.name, item]));
+  for (const [name, required] of Object.entries(lock.requiredLiveAppSettings ?? {})) {
+    const item = liveSettings.get(name);
+    if (!item || item.kind !== "plain" || lc(String(item.value)) !== lc(required)) {
+      findings.fail("ORIGIN-LIVE-SETTING", lock.resource, `${name} must retain the reviewed non-secret value before origin access changes`);
+    }
+  }
+  if (app.config.healthCheckPath != null) {
+    findings.fail("ORIGIN-HEALTH-CHECK", lock.resource, "the reviewed baseline has App Service Health Check disabled");
+  }
+  const current = (app.accessrestrictions.ipSecurityRestrictions ?? []).filter((r) => Number(r.priority) !== 2147483647);
+  const want = web.properties.ipSecurityRestrictions;
+  const approved = (rules) => rules.length === lock.rules.length &&
+    new Set(rules.map((r) => lc(ruleName(r)))).size === lock.rules.length &&
+    rules.every((r) => approvedOriginRule(ctx, lock.resource, "ipSecurityRestrictions", r));
+  const liveDefault = app.config.ipSecurityRestrictionsDefaultAction ?? ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction;
+  const desiredDefault = web.properties.ipSecurityRestrictionsDefaultAction;
+  const same = (current.length === 0 && want.length === 0 && lc(liveDefault) === "allow" && lc(desiredDefault) === "allow") ||
+    (approved(current) && approved(want) && lc(liveDefault) === "deny" && lc(desiredDefault) === "deny");
+  const transition = originLockTransition(ctx, lock.resource);
+  if (transition) findings.allowed("ACCESS-ORIGIN-WEB", lock.resource, `reviewed main-site ${transition} transition; SCM stays separate`);
+  else if (!same) findings.fail("ACCESS-ORIGIN-SET", lock.resource, "scoped deployment is not an exact unchanged or reviewed full-list origin-lock state");
 }
 
 function checkAccessRules(ctx, name, sc, l) {

@@ -92,27 +92,41 @@ export function evaluateWhatIf(ctx) {
           }
           // The reduced what-if hides array bodies. Accept only a whole, manifest-exact transition independently
           // verified against the desired snapshot and live access rules; never exempt SCM or another site.
-          if (lc(change.type) === "microsoft.web/sites" &&
-            lc(change.name) === lc(deployment.originLock?.resource) &&
-            /^properties\.siteConfig\.ipSecurityRestrictions(?:DefaultAction|(?:\[\d+\])?(?:\.[A-Za-z]+)?)$/.test(d.path)) {
-            const desiredSite = ctx.desired.find("Microsoft.Web/sites", change.name);
-            const liveSite = live.apps[change.name];
+          const originSite = deployment.originLock?.resource;
+          const scopedOrigin = lc(change.type) === "microsoft.web/sites/config" && lc(change.name) === lc(`${originSite}/web`);
+          const fullOrigin = lc(change.type) === "microsoft.web/sites" && lc(change.name) === lc(originSite);
+          const originPrefix = scopedOrigin ? "properties." : "properties.siteConfig.";
+          if ((scopedOrigin || fullOrigin) &&
+            new RegExp(`^${originPrefix.replaceAll(".", "\\.")}ipSecurityRestrictions(?:DefaultAction|(?:\\[\\d+\\])?(?:\\.[A-Za-z]+)?)$`).test(d.path)) {
+            const desiredSite = ctx.desired.find("Microsoft.Web/sites", originSite);
+            const desiredWeb = ctx.desired.find("Microsoft.Web/sites/config", `${originSite}/web`);
+            const desiredConfig = desiredSite?.properties?.siteConfig ?? desiredWeb?.properties;
+            const liveSite = live.apps[originSite];
             const liveRules = (liveSite?.accessrestrictions?.ipSecurityRestrictions ?? liveSite?.config?.ipSecurityRestrictions ?? [])
               .filter((r) => Number(r.priority) !== 2147483647);
+            const baseline = liveSite?.config?.ipSecurityRestrictionsDefaultAction == null &&
+              lc(ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              lc(desiredConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              liveRules.length === 0 && desiredConfig?.ipSecurityRestrictions?.length === 0;
             // Azure reports the implicit Allow default as null, then what-if reports an explicit
             // Allow as Create. This is safe only while both live and desired rule lists are empty.
-            if (d.path === "properties.siteConfig.ipSecurityRestrictionsDefaultAction" &&
-              d.op === "Create" && d.before == null && lc(d.after) === "allow" &&
-              liveSite?.config?.ipSecurityRestrictionsDefaultAction == null &&
-              lc(ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
-              lc(desiredSite?.properties?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
-              liveRules.length === 0 && desiredSite?.properties?.siteConfig?.ipSecurityRestrictions?.length === 0) {
+            if (baseline && d.path === `${originPrefix}ipSecurityRestrictionsDefaultAction` &&
+              d.op === "Create" && d.before == null && lc(d.after) === "allow") {
               findings.allowed("WHATIF-ORIGIN-BASELINE", subject, `${d.path} makes the existing implicit Allow explicit while both main-site rule lists stay empty`);
               continue;
             }
-            const transition = originLockTransition(ctx, change.name);
+            // The scoped web config shows deletion of App Service's synthetic "Allow all"
+            // list when the disabled template explicitly declares an empty list.
+            if (scopedOrigin && baseline && d.path === "properties.ipSecurityRestrictions" && d.op === "Delete" &&
+              d.before?.kind === "array" && d.before.length === 1 && d.before.names?.length === 1 &&
+              lc(d.before.names[0]) === "allow all") {
+              findings.allowed("WHATIF-ORIGIN-BASELINE", subject, "the implicit Allow all rule is represented by an explicit empty main-site list");
+              continue;
+            }
+            const transition = originLockTransition(ctx, originSite);
             const expected = deployment.originLock.rules;
-            const observedNames = [d.before?.name, d.after?.name, ...(d.before?.names ?? []), ...(d.after?.names ?? [])].filter(Boolean);
+            const relevant = transition === "enable" ? d.after : d.before;
+            const observedNames = [relevant?.name, ...(relevant?.names ?? [])].filter(Boolean);
             const knownNames = new Set(expected.map((r) => lc(r.name)));
             const indexed = /ipSecurityRestrictions\[(\d+)\](?:\.(name|priority|action|ipAddress))?$/.exec(d.path);
             const member = indexed ? expected[Number(indexed[1])] : null;

@@ -15,7 +15,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Findings, canonical, readJson, sha256, lc } from "./lib/util.mjs";
 import { loadDesired, loadLive } from "./lib/model.mjs";
-import { checkSites, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
+import { checkSites, checkOriginWebConfig, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
 import { checkNetwork, checkDiagnostics, checkDataAndVault, checkRbac, checkIdentities, checkStaticSites } from "./lib/checks-infra.mjs";
 import { evaluateWhatIf } from "./lib/whatif.mjs";
 
@@ -73,6 +73,14 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
     const where = `deployments.${deploymentKey}.originLock`;
     if (typeof lock?.resource !== "string" || !lock.resource) shapeProblems.push(`${where}: resource is required`);
     if (typeof lock?.why !== "string" || lock.why.trim().length < 10) shapeProblems.push(`${where}: why is required`);
+    if (lock?.requiredLiveAppSettings !== undefined) {
+      const allowed = new Set(["WebDrafts__Enabled", "WebDrafts__TrustCloudflareConnectingIp", "PlaceSuggestions__Enabled", "WebDrafts__PlaceSuggestionsPaused", "WEBSITE_WARMUP_PATH", "WEBSITE_WARMUP_STATUSES"]);
+      if (!lock.requiredLiveAppSettings || typeof lock.requiredLiveAppSettings !== "object" || Array.isArray(lock.requiredLiveAppSettings)) {
+        shapeProblems.push(`${where}: requiredLiveAppSettings must be a map of reviewed non-secret settings`);
+      } else for (const [name, value] of Object.entries(lock.requiredLiveAppSettings)) {
+        if (!allowed.has(name) || typeof value !== "string") shapeProblems.push(`${where}: invalid required live setting ${JSON.stringify(name)}`);
+      }
+    }
     if (!Array.isArray(lock?.rules) || lock.rules.length === 0) shapeProblems.push(`${where}: exact rules are required`);
     else {
       const names = new Set(), priorities = new Set();
@@ -167,6 +175,7 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
   let whatIfSummary = { noise: {}, counts: {} };
   if (desired.ok) {
     checkSites(ctx);
+    checkOriginWebConfig(ctx);
     checkAppSettings(ctx);
     checkSlotSettings(ctx);
     checkAuthSettings(ctx);
