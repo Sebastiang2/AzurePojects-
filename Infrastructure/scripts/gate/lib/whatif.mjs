@@ -95,6 +95,21 @@ export function evaluateWhatIf(ctx) {
           if (lc(change.type) === "microsoft.web/sites" &&
             lc(change.name) === lc(deployment.originLock?.resource) &&
             /^properties\.siteConfig\.ipSecurityRestrictions(?:DefaultAction|(?:\[\d+\])?(?:\.[A-Za-z]+)?)$/.test(d.path)) {
+            const desiredSite = ctx.desired.find("Microsoft.Web/sites", change.name);
+            const liveSite = live.apps[change.name];
+            const liveRules = (liveSite?.accessrestrictions?.ipSecurityRestrictions ?? liveSite?.config?.ipSecurityRestrictions ?? [])
+              .filter((r) => Number(r.priority) !== 2147483647);
+            // Azure reports the implicit Allow default as null, then what-if reports an explicit
+            // Allow as Create. This is safe only while both live and desired rule lists are empty.
+            if (d.path === "properties.siteConfig.ipSecurityRestrictionsDefaultAction" &&
+              d.op === "Create" && d.before == null && lc(d.after) === "allow" &&
+              liveSite?.config?.ipSecurityRestrictionsDefaultAction == null &&
+              lc(ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              lc(desiredSite?.properties?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              liveRules.length === 0 && desiredSite?.properties?.siteConfig?.ipSecurityRestrictions?.length === 0) {
+              findings.allowed("WHATIF-ORIGIN-BASELINE", subject, `${d.path} makes the existing implicit Allow explicit while both main-site rule lists stay empty`);
+              continue;
+            }
             const transition = originLockTransition(ctx, change.name);
             const expected = deployment.originLock.rules;
             const observedNames = [d.before?.name, d.after?.name, ...(d.before?.names ?? []), ...(d.after?.names ?? [])].filter(Boolean);

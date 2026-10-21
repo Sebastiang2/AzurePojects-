@@ -410,6 +410,30 @@ const originLockWorld = (w, rollback = false) => {
   ];
 };
 
+test("implicit live Allow to explicit Allow is accepted only for an empty unlocked origin", () => {
+  const baseline = (w) => {
+    originLockWorld(w);
+    const site = w.desiredResources.find((r) => r.name === "app-test");
+    site.properties.siteConfig.ipSecurityRestrictions = [];
+    site.properties.siteConfig.ipSecurityRestrictionsDefaultAction = "Allow";
+    w.live.apps["app-test"].config.ipSecurityRestrictionsDefaultAction = null;
+    w.manifest.defaults = { ...(w.manifest.defaults ?? {}), siteConfig: { ipSecurityRestrictionsDefaultAction: "Allow" } };
+    const change = w.whatif.changes.find((c) => c.name === "app-test" && c.type === "Microsoft.Web/sites");
+    change.deltas = [{ path: "properties.siteConfig.ipSecurityRestrictionsDefaultAction", op: "Create", before: null, after: "Allow" }];
+  };
+  const report = run(mutate(baseline));
+  assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
+  assert.ok(ids(report, "allowed").includes("WHATIF-ORIGIN-BASELINE"));
+  failsWith(run(mutate((w) => {
+    baseline(w);
+    w.live.apps["app-test"].accessrestrictions.ipSecurityRestrictions = [structuredClone(cloudflareRule)];
+  })), "WHATIF-ORIGIN-LOCK");
+  failsWith(run(mutate((w) => {
+    baseline(w);
+    w.whatif.changes.find((c) => c.name === "app-test" && c.type === "Microsoft.Web/sites").deltas[0].after = "Deny";
+  })), "WHATIF-ORIGIN-LOCK");
+});
+
 test("an exact Cloudflare-only main-site transition passes without changing SCM", () => {
   const report = run(mutate((w) => originLockWorld(w)));
   assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
