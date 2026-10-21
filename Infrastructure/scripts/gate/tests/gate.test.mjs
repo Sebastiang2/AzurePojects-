@@ -385,6 +385,67 @@ test("a siteConfig value what-if would write is accepted only when the manifest 
   assert.ok(ids(ok, "allowed").includes("WHATIF-SITECONFIG"));
 });
 
+const cloudflareRule = { name: "Allow-Cloudflare-v4-01", priority: 100, action: "Allow", ipAddress: "173.245.48.0/20" };
+const originLockWorld = (w, rollback = false) => {
+  const site = w.desiredResources.find((r) => r.name === "app-test");
+  const app = w.live.apps["app-test"];
+  site.properties.siteConfig.ipSecurityRestrictions = rollback ? [] : [structuredClone(cloudflareRule)];
+  site.properties.siteConfig.ipSecurityRestrictionsDefaultAction = rollback ? "Allow" : "Deny";
+  site.properties.siteConfig.scmIpSecurityRestrictions = [];
+  site.properties.siteConfig.scmIpSecurityRestrictionsUseMain = false;
+  app.config.ipSecurityRestrictionsDefaultAction = rollback ? "Deny" : "Allow";
+  app.config.scmIpSecurityRestrictionsUseMain = false;
+  app.accessrestrictions.ipSecurityRestrictions = rollback ? [structuredClone(cloudflareRule)] : [];
+  const deployment = w.manifest.deployments.main;
+  deployment.originLock = { resource: "app-test", why: "Only the reviewed Cloudflare range may change", rules: [structuredClone(cloudflareRule)] };
+  deployment.allowedChanges = [{ resource: "app-test", property: "siteConfig.ipSecurityRestrictionsDefaultAction",
+    before: rollback ? "Deny" : "Allow", after: rollback ? "Allow" : "Deny", why: "Explicit origin lock transition" }];
+  deployment.touches = [{ type: "Microsoft.Web/sites", name: "app-test" }];
+  const change = w.whatif.changes.find((c) => c.name === "app-test" && c.type === "Microsoft.Web/sites");
+  change.changeType = "Modify";
+  change.deltas = [
+    { path: "properties.siteConfig.ipSecurityRestrictions[0]", op: rollback ? "Delete" : "Create",
+      ...(rollback ? { before: { kind: "object", name: cloudflareRule.name } } : { after: { kind: "object", name: cloudflareRule.name } }) },
+    { path: "properties.siteConfig.ipSecurityRestrictionsDefaultAction", op: "Create", after: rollback ? "Allow" : "Deny" },
+  ];
+};
+
+test("an exact Cloudflare-only main-site transition passes without changing SCM", () => {
+  const report = run(mutate((w) => originLockWorld(w)));
+  assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
+  assert.ok(ids(report, "allowed").includes("ACCESS-ORIGIN-NEW"));
+  assert.ok(ids(report, "allowed").includes("WHATIF-ORIGIN-LOCK"));
+});
+
+test("origin-lock rollback explicitly removes only the reviewed rule and restores Allow", () => {
+  const report = run(mutate((w) => originLockWorld(w, true)));
+  assert.equal(report.verdict, "PASS", JSON.stringify(ids(report)));
+  assert.ok(ids(report, "allowed").includes("ACCESS-ORIGIN-ROLLBACK"));
+});
+
+test("an altered Cloudflare range, unrelated rule or SCM lock fails closed", () => {
+  failsWith(run(mutate((w) => {
+    originLockWorld(w);
+    w.desiredResources.find((r) => r.name === "app-test").properties.siteConfig.ipSecurityRestrictions[0].ipAddress = "0.0.0.0/0";
+  })), "ACCESS-ORIGIN-SET");
+  failsWith(run(mutate((w) => {
+    originLockWorld(w, true);
+    w.live.apps["app-test"].accessrestrictions.ipSecurityRestrictions.push({ name: "Unknown", priority: 101, action: "Allow", ipAddress: "10.0.0.0/8" });
+  })), "ACCESS-RULE-REMOVED");
+  failsWith(run(mutate((w) => {
+    originLockWorld(w);
+    w.desiredResources.find((r) => r.name === "app-test").properties.siteConfig.scmIpSecurityRestrictionsUseMain = true;
+  })), "SITE-PROP-CHANGE");
+  failsWith(run(mutate((w) => {
+    originLockWorld(w);
+    w.whatif.changes.find((c) => c.name === "app-test" && c.type === "Microsoft.Web/sites").deltas[0].after.name = "Unknown";
+  })), "WHATIF-ORIGIN-LOCK");
+  failsWith(run(mutate((w) => {
+    originLockWorld(w, true);
+    w.live.apps["app-test"].accessrestrictions.ipSecurityRestrictions[0].headers = { "x-azure-fdid": ["unexpected"] };
+  })), "ACCESS-RULE-REMOVED");
+});
+
 test("values of secret-looking settings never appear in report messages", () => {
   const w = mutate((x) => {
     x.desiredResources.find((r) => r.name === "app-test/appsettings").properties.WEBHOOK_TOKEN = "plain-desired-value-that-should-be-hidden-1234567890";

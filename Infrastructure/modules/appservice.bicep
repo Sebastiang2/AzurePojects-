@@ -227,6 +227,10 @@ resource dataApi 'Microsoft.Web/sites@2024-11-01' = {
       // restores the normal public API perimeter. SCM remains separate below.
       ipSecurityRestrictions: dataApiCloudflareOriginLockEnabled ? cloudflareOriginAccessRestrictions : []
       ipSecurityRestrictionsDefaultAction: dataApiCloudflareOriginLockEnabled ? 'Deny' : 'Allow'
+      // Publishing access is a separate surface. Do not inherit the main-site lock onto Kudu/SCM.
+      scmIpSecurityRestrictions: []
+      scmIpSecurityRestrictionsDefaultAction: 'Allow'
+      scmIpSecurityRestrictionsUseMain: false
     })
   }
 }

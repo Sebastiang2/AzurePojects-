@@ -4,11 +4,11 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("canonical production remains disabled; dedicated activation enables only warm-up", () => {
+test("canonical production preserves the active dedicated warm-up while Health Check stays off", () => {
   const parameters = read("environments/prod.bicepparam");
   const main = read("main.bicep");
   const module = read("modules/appservice.bicep");
-  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = false$/m);
+  assert.match(parameters, /^param dataApiReadinessWarmupEnabled = true$/m);
   assert.match(parameters, /^param dataApiHealthCheckEnabled = false$/m);
   for (const disabled of ["webDraftsEnabled", "webDraftsTrustCloudflareConnectingIp", "dataApiCloudflareOriginLockEnabled", "placeSuggestionsEnabled"]) {
     assert.match(parameters, new RegExp(`^param ${disabled} = false$`, "m"));
@@ -89,9 +89,6 @@ test("dedicated production parameters do not drift from the canonical production
   for (const [name, value] of dedicated) {
     if (name === "databaseUser") {
       assert.equal(value, canonical.get("mysqlAdminUsername"));
-    } else if (name === "dataApiReadinessWarmupEnabled") {
-      assert.equal(value, "true");
-      assert.equal(canonical.get(name), "false");
     } else if (canonical.has(name)) {
       assert.equal(value, canonical.get(name), `${name} must match the canonical production parameter`);
     }

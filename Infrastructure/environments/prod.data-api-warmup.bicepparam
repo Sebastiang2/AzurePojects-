@@ -21,7 +21,7 @@ param webDraftsEnabled = false
 param webDraftsRequireCaptcha = true
 param webDraftsTrustCloudflareConnectingIp = false
 param dataApiCloudflareOriginLockEnabled = false
-// Production currently omits this setting; this fail-closed brake is the only additional non-warm-up setting added.
+// Production already has this fail-closed brake; keep it synchronized with the canonical parameters.
 param webDraftsPlaceSuggestionsPaused = true
 param placeSuggestionsEnabled = false
 param dataApiReadinessWarmupEnabled = true

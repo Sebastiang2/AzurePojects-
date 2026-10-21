@@ -77,3 +77,26 @@ test("origin-lock rollback is explicit and its WebDrafts brake is safety-gated",
   assert.equal(dataApi.mustEqual.WebDrafts__PlaceSuggestionsPaused, "true");
   assert.ok(manifest.deployments.main.allowedNewSettings["app-invi-data-api-prod-001"].includes("WebDrafts__PlaceSuggestionsPaused"));
 });
+
+test("origin lock has the exact reviewed ranges and never applies main restrictions to SCM", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const appService = read("modules/appservice.bicep");
+  const params = read("environments/prod.bicepparam");
+  const manifest = JSON.parse(read("safety/manifest.json"));
+  const deployment = manifest.deployments.main;
+  const declared = [...appService.matchAll(/\{ name: '([^']+)', priority: (\d+), action: 'Allow', ipAddress: '([^']+)' \}/g)]
+    .map((m) => ({ name: m[1], priority: Number(m[2]), action: "Allow", ipAddress: m[3] }));
+  assert.equal(declared.length, 22);
+  assert.deepEqual(declared, deployment.originLock.rules);
+  assert.equal(declared.filter((r) => r.name.includes("-v4-")).length, 15);
+  assert.equal(declared.filter((r) => r.name.includes("-v6-")).length, 7);
+  assert.match(params, /^param dataApiCloudflareOriginLockEnabled = false$/m);
+  assert.match(params, /^param webDraftsTrustCloudflareConnectingIp = false$/m);
+  assert.match(appService, /scmIpSecurityRestrictions: \[\]/);
+  assert.match(appService, /scmIpSecurityRestrictionsDefaultAction: 'Allow'/);
+  assert.match(appService, /scmIpSecurityRestrictionsUseMain: false/);
+  assert.deepEqual(deployment.allowedChanges.map(({ resource, property, before, after }) => ({ resource, property, before, after })), [
+    { resource: "app-invi-data-api-prod-001", property: "siteConfig.ipSecurityRestrictionsDefaultAction", before: "Allow", after: "Deny" },
+    { resource: "app-invi-data-api-prod-001", property: "siteConfig.ipSecurityRestrictionsDefaultAction", before: "Deny", after: "Allow" },
+  ]);
+});

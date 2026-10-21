@@ -207,6 +207,28 @@ rett i Bicep via PR og utrull på nytt. Ikke la live-endringen bli stående som 
 
 ### 5.2.1 Origin-lock: eksplisitt, testbar nødrollback
 
+**Før aktivering:** Cloudflare-regelen er operatørverifisert som aktiv for `api.cetchapp.com` med `Set static` på
+`X-Invi-Origin-Verify`, men headerens levering helt til Azure er ikke bevist mens WebDrafts er av. Mobilappen, nettstedet
+og admin-konfigurasjonen bruker `api.cetchapp.com`; `verify-data-api-ready.mjs` og eldre smoke-skript bruker også den
+direkte Azure-verten. App Insights viste 12 gjentatte direkte 404-kall på én annen sti mellom 19:20 og 20:20 UTC
+2026-10-21. Klient-IP ble maskert og forespørslene har ingen brukeragent i tilgjengelig telemetri. Eier og hensikt må
+identifiseres med godkjente tilgangslogger før direkte tilgang blokkeres; antakelser om at 404-kallene er harmløse er
+ikke nok. `WEBSITE_WARMUP_PATH=/v1/extras/ready` er aktivt, mens App Service Health Check er av. Bekreft separat at
+plattformens interne warm-up fortsatt virker under restriksjonene. SCM skal beholde `useMain=false` og sin egen Allow-regel.
+
+Sikkerhetsgaten tillater bare de 15 IPv4- og 7 IPv6-nettene i manifestet og nøyaktig overgang `Allow` → `Deny` for
+Data API-hovedsiden. Sammenlign listen med https://www.cloudflare.com/ips-v4 og https://www.cloudflare.com/ips-v6
+rett før aktivering. Kjør Bicep-validering, `deploy.sh --deployment main --dry-run`, og les hele den saniterte what-if:
+ingen endring i warm-up, App Settings, Auth API, Key Vault, database, SCM eller andre ressurser kan aksepteres. En
+separat godkjent parameterendring må sette `dataApiCloudflareOriginLockEnabled=true`; WebDrafts, CF-IP-tillit og
+PlaceSuggestions forblir av, og PlaceSuggestions forblir pauset.
+
+Etter en godkjent origin-lock-deploy skal **offentlig** `https://api.cetchapp.com/v1/extras/ready` gi tre påfølgende
+HTTP 200 med godkjent SHA. `verify-data-api-ready.mjs` bruker derfor den offentlige ruten som standard. Direkte
+`https://app-invi-data-api-prod-001.azurewebsites.net/v1/extras/ready` skal fra utsiden av Cloudflare avvises (forvent
+403); en direkte HTTP 200 er da en sikkerhetsfeil, ikke et helsekrav. Verifiser også offentlig API, CORS, auth-guard og
+SignalR-forhandling, SCM-tilgang, warm-up-innstillingene, 5xx og unntak. Stopp ved avvik; ingen automatisk ny deploy.
+
 Når `dataApiCloudflareOriginLockEnabled` har vært `true`, skal en rollback **ikke** gjøres ved å utelate
 `ipSecurityRestrictions` fra malen eller med et manuelt portal-kall. Sett parameteren til `false` i en godkjent PR og bruk
 samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
@@ -214,9 +236,10 @@ samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestric
 Den effektive verdien av `WebDrafts__TrustCloudflareConnectingIp` er bundet til origin-locken, slik at den blir `false` når
 origin-locken er `false`, selv om parameteren feilaktig ikke ble slått av samtidig.
 
-Gjør rollback i to deployer: først sett `webDraftsTrustCloudflareConnectingIp=false` mens origin-locken fortsatt er på, og
-verifiser den kjørende appinnstillingen. Først deretter settes `dataApiCloudflareOriginLockEnabled=false`. Dette eliminerer
-også et eventuelt ordensvindu mellom oppdateringen av App Settings og siteConfig i ARM.
+Med den nåværende grunnlinjen er `webDraftsTrustCloudflareConnectingIp=false`; en separat godkjent rollback kan da sette
+`dataApiCloudflareOriginLockEnabled=false` i én gated deploy. Hvis CF-IP-tillit er aktivert i en senere utrulling, gjør
+rollback i to deployer: sett først tilliten til `false` mens origin-locken fortsatt er på, verifiser den kjørende
+appinnstillingen, og sett deretter origin-locken til `false`. Det eliminerer et ordensvindu mellom App Settings og siteConfig.
 
 Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment main --dry-run` bestå og rapporten vise at bare
 Data API-ets hovedrestriksjoner går fra Cloudflare-listen/`Deny` til tom liste/`Allow`. `scmIpSecurityRestrictions` og

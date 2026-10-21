@@ -3,10 +3,13 @@
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const origin = "https://app-invi-data-api-prod-001.azurewebsites.net/v1/extras";
+const origins = {
+  public: "https://api.cetchapp.com/v1/extras",
+  direct: "https://app-invi-data-api-prod-001.azurewebsites.net/v1/extras",
+};
 
 export async function verifyReady({ revision, liveness = false, attempts = 30, consecutive = 3, timeoutMs = 10000, pauseMs = 3000,
-  fetcher = globalThis.fetch, sleeper = sleep, log = console.log }) {
+  origin = origins.public, fetcher = globalThis.fetch, sleeper = sleep, log = console.log }) {
   if (!liveness && !/^[0-9a-f]{40}$/i.test(revision)) throw new Error("expected backend revision must be a full SHA");
   let successes = 0;
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -43,11 +46,12 @@ if (process.argv[1]?.endsWith("verify-data-api-ready.mjs")) {
   const liveness = revision === "--liveness";
   const attempts = Number(process.argv[3] ?? 30);
   const consecutive = Number(process.argv[4] ?? 3);
-  if ((!liveness && !/^[0-9a-f]{40}$/i.test(revision)) || !Number.isInteger(attempts) || attempts < 1 || !Number.isInteger(consecutive) || consecutive < 1 || consecutive > attempts) {
-    console.error("usage: verify-data-api-ready.mjs <full-SHA|--liveness> [attempts] [consecutive]");
+  const route = process.argv[5] ?? "--public";
+  if ((!liveness && !/^[0-9a-f]{40}$/i.test(revision)) || !Number.isInteger(attempts) || attempts < 1 || !Number.isInteger(consecutive) || consecutive < 1 || consecutive > attempts || !["--public", "--direct"].includes(route)) {
+    console.error("usage: verify-data-api-ready.mjs <full-SHA|--liveness> [attempts] [consecutive] [--public|--direct]");
     process.exit(2);
   }
-  const passed = await verifyReady({ revision, liveness, attempts, consecutive });
+  const passed = await verifyReady({ revision, liveness, attempts, consecutive, origin: route === "--direct" ? origins.direct : origins.public });
   if (!passed) console.error(liveness ? "Data API did not recover at /v1/extras/is-up" : "Data API did not return consecutive readiness 200 responses at the expected revision");
   process.exit(passed ? 0 : 1);
 }

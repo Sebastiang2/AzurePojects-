@@ -1,9 +1,10 @@
 # Data API readiness controls
 
-This activation proposal keeps `dataApiReadinessWarmupEnabled=false` and `dataApiHealthCheckEnabled=false` in the
-canonical `Infrastructure/environments/prod.bicepparam`. Only the dedicated
-`Infrastructure/environments/prod.data-api-warmup.bicepparam` sets warm-up to `true`. Merging code does not deploy it;
-the full **main** deployment is not authorized to add or remove warm-up settings. Both controls target the database-backed
+Production now has startup warm-up active. Both `Infrastructure/environments/prod.bicepparam` and the dedicated
+`Infrastructure/environments/prod.data-api-warmup.bicepparam` set `dataApiReadinessWarmupEnabled=true`, so a later full
+**main** deployment preserves the two live warm-up settings. The deployment script requires these parameters to match;
+the full main deployment is not an activation or rollback path. `dataApiHealthCheckEnabled=false` remains separate.
+Both controls target the database-backed
 `/v1/extras/ready` endpoint; `/v1/extras/is-up` is liveness-only.
 
 | Control | When enabled | When disabled again |
@@ -18,8 +19,10 @@ can delay or fail startup. Do not deploy an older API without `/v1/extras/ready`
 
 ## Required activation gate
 
-1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through the App Service default hostname,
-   without a redirect, and that its revision is the reviewed release. Confirm the authorized operator has all required secure
+1. Verify that the deployed API returns anonymous HTTP 200 from `/v1/extras/ready` through `api.cetchapp.com`,
+   without a redirect, and that its revision is the reviewed release. Before origin lock, verify the direct Azure hostname
+   too; after origin lock, direct public access must be denied and must not be required by the readiness guard.
+   Confirm the authorized operator has all required secure
    deployment inputs without printing their values.
 2. Use the dedicated `data-api-warmup` deployment target. Its Bicep file declares only the existing Data API site and
    Application Insights component as read-only references and writes only `app-invi-data-api-prod-001/appsettings`. The
@@ -52,13 +55,12 @@ The review shell on 2026-10-20 had neither variable, so this prerequisite is **n
 
 ## Rollback
 
-Set `dataApiReadinessWarmupEnabled=false` in the **dedicated** production parameter file in a reviewed rollback PR; the
-canonical production parameter remains `false` throughout. Then deploy only
+Set `dataApiReadinessWarmupEnabled=false` in **both** production parameter files in a reviewed rollback PR. Then deploy only
 `data-api-warmup`. The manifest permits removing just the two `WEBSITE_WARMUP_*` settings. Confirm the exact reverse change
 in a fresh what-if/safety gate, verify both RevenueCat inputs, and obtain separate deployment approval. The App Settings
 write can recycle the Data API. The rollback path deliberately does **not** require `/ready` before removing warm-up;
 afterward it requires three `/v1/extras/is-up` 200 responses, while the safety gate verifies that both warm-up settings
-are absent. The deployment script rejects a canonical main parameter of `true`. The main manifest also rejects the
+are absent. The deployment script rejects a mismatch between the canonical and dedicated parameters. The main manifest also rejects the
 warm-up settings being added or removed by an unrelated full deployment. Do not deploy an older backend
 revision without `/ready` until this rollback has completed. Health Check remains disabled throughout. This rollback has
 not been exercised in production.

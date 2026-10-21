@@ -68,6 +68,29 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
       shapeProblems.push(`${where}: property ${JSON.stringify(c.property)} is none of setting:<NAME>, ipSecurityRestrictions:<rule>, siteConfig.<name> or a site property`);
     }
   });
+  if (deployment.originLock !== undefined) {
+    const lock = deployment.originLock;
+    const where = `deployments.${deploymentKey}.originLock`;
+    if (typeof lock?.resource !== "string" || !lock.resource) shapeProblems.push(`${where}: resource is required`);
+    if (typeof lock?.why !== "string" || lock.why.trim().length < 10) shapeProblems.push(`${where}: why is required`);
+    if (!Array.isArray(lock?.rules) || lock.rules.length === 0) shapeProblems.push(`${where}: exact rules are required`);
+    else {
+      const names = new Set(), priorities = new Set();
+      lock.rules.forEach((rule, i) => {
+        const at = `${where}.rules[${i}]`;
+        if (!rule || typeof rule !== "object" || Object.keys(rule).sort().join(",") !== "action,ipAddress,name,priority") {
+          shapeProblems.push(`${at}: only action, ipAddress, name and priority are permitted`);
+          if (!rule || typeof rule !== "object") return;
+        }
+        if (rule.action !== "Allow" || !Number.isInteger(rule.priority) || rule.priority < 1 ||
+          typeof rule.name !== "string" || !rule.name || typeof rule.ipAddress !== "string" || !rule.ipAddress.includes("/")) {
+          shapeProblems.push(`${at}: invalid named allow rule`);
+        }
+        if (names.has(lc(rule.name)) || priorities.has(rule.priority)) shapeProblems.push(`${at}: duplicate name or priority`);
+        names.add(lc(rule.name)); priorities.add(rule.priority);
+      });
+    }
+  }
   if (deployment.mysqlServer !== undefined) {
     const s = deployment.mysqlServer;
     const where = `deployments.${deploymentKey}.mysqlServer`;

@@ -91,10 +91,10 @@ const read = (file) => {
   return matches[0][1];
 };
 const dedicated = read(process.argv[1]);
-// Canonical main stays disabled. A full main deployment is never the activation or rollback path.
-if (read(process.argv[2]) !== "false") process.exit(1);
+// A full main deployment must preserve the warm-up state already selected by the dedicated target.
+if (read(process.argv[2]) !== dedicated) process.exit(1);
 process.stdout.write(dedicated);
-' "$(to_native "$REPO_ROOT/$PARAMETERS")" "$(to_native "$REPO_ROOT/Infrastructure/environments/prod.bicepparam")")" || block "main production warm-up parameter must remain false, and the dedicated parameter must be explicit."
+' "$(to_native "$REPO_ROOT/$PARAMETERS")" "$(to_native "$REPO_ROOT/Infrastructure/environments/prod.bicepparam")")" || block "main and dedicated production warm-up parameters must match explicitly."
 fi
 MAX_AGE="$(field top.maxEvidenceAgeMinutes)"
 MAX_AGE="${MAX_AGE:-30}"
