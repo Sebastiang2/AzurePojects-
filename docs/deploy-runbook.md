@@ -227,15 +227,36 @@ oppdatert read-only plan rett før skriving og etterkontroll av **alle** live eg
 Ingen ARM what-if kan brukes som garanti for en separat PATCH-operasjon; test
 bevaringssemantikken i et trygt App Service-miljø før produksjonsgodkjenning.
 
-Før aktivering må eier og hensikt for de 12 gjentatte direkte 404-kallene identifiseres
-med godkjente tilgangslogger. App Insights maskerte IP og viste ingen brukeragent i
-tilgjengelig telemetri. De direkte readiness- og smoke-skriptene må migreres eller få
-en godkjent intern probevei. Cloudflare-regelen er sett aktiv for `api.cetchapp.com`
-med `Set static` for `X-Invi-Origin-Verify`, men levering og korrekt verdi ved Azure
-må bevises ved en server-side boolsk sjekk uten å logge header eller secret. Sammenlign
-de 15 IPv4- og 7 IPv6-nettene i manifestet med Cloudflares publiserte lister rett
-før en eventuell endring. Verifiser også at intern startup warm-up virker når direkte
-ekstern tilgang blokkeres.
+**Direkte-origin-avhengigheter (App Insights 14 dager, 2026-10-22).** Alle readiness-skript bruker nå
+`https://api.cetchapp.com`; den direkte Azure-verten er bare en eksplisitt førlås-diagnostikk
+(`verify-data-api-ready.mjs ... --direct`, `verify-origin-lock.mjs baseline`) og ingen utrulling avhenger av den etter låsen.
+Samsvarer med kjente kilder (ikke bevist per kall): 38 direkte `/ready` 200 (2026-10-20/21) tidsmessig med readiness-verifikatoren
+fra godkjente utrullinger, 3 `is-up` og 5 `/swagger` sannsynlig manuelle operatørkall, 2 `/ready` fra `169.254.x.x` er intern warm-up (går ikke via den offentlige
+frontenden og påvirkes ikke av tilgangsreglene), og 17 `/robots933456.txt` fra `169.254.x.x` er App Service sin
+containerstart-probe. De 12 gjentatte direkte 404-ene (`GET /`, 3 728 stk., 265 per døgn siden 2026-10-08, median
+intervall nøyaktig 300 s, ~14 ms) er **konsistente med** App Service Always On (på) men **ikke positivt bevist**:
+telemetrien har verken IP eller User-Agent. Behandle dem som ukjente til beviset finnes (se `OriginVerificationProbe`
+i Data API-dokumentasjonen, som også klassifiserer rot-kall etter User-Agent-type uten å logge verdien). Ukjent er
+også de 18 819 `GET /` 404 mot `api.cetchapp.com` (skanner-støy som `/.env`, `/wp-*` dominerer resten).
+
+Verifikasjon av omkretsen (kun uautentiserte GET mot helse-/livsstegn-stier; ingen skriving):
+
+```bash
+node Infrastructure/scripts/verify-origin-lock.mjs baseline   # før aktivering / etter rollback: offentlig 200, direkte 200, SCM svarer
+node Infrastructure/scripts/verify-origin-lock.mjs locked     # etter godkjent PATCH: offentlig 200, direkte 403, SCM svarer (ikke 403)
+node Infrastructure/scripts/compare-web-config.mjs before.json after.json   # kun stier; bare de to hovedsidefeltene kan avvike
+```
+
+`locked` krever at den direkte verten avvises med akkurat 403 (en tidsavbrudd eller 5xx er ikke bevis på avvisning),
+og at SCM/Kudu fortsatt svarer. Always On-pingen og intern warm-up må sees fortsatt å lykkes i telemetrien etter PATCH.
+`origin-lock-patch-preservation.test.mjs` modellerer PATCH-bevaring offline (VNet, runtime, Always On, TLS, auth,
+SCM, CORS, warm-up) fordi det ikke finnes noe ikke-produksjons App Service-miljø; den erstatter ikke
+før/etter-sammenligningen mot det virkelige miljøet.
+
+Cloudflare-regelen er sett aktiv for `api.cetchapp.com` med `Set static` for `X-Invi-Origin-Verify`, men levering og
+korrekt verdi ved Azure må bevises ved den kontrollerte, boolske `OriginVerificationProbe` uten å logge header eller
+secret. Sammenlign de 15 IPv4- og 7 IPv6-nettene i manifestet med Cloudflares publiserte lister rett før en eventuell
+endring.
 
 Etter en særskilt godkjent PATCH: tre påfølgende HTTP 200 fra offentlig
 `https://api.cetchapp.com/v1/extras/ready` med riktig SHA; direkte ekstern
