@@ -123,6 +123,37 @@ function ruleName(rule) {
   return rule.name ?? rule.ruleName ?? `${rule.action}:${rule.ip_address ?? rule.ipAddress ?? rule.tag ?? ""}`;
 }
 
+const accessRuleKey = (rule) => `${lc(rule.action)}|${Number(rule.priority)}|${lc(rule.ipAddress ?? rule.ip_address)}|${lc(rule.tag)}|${JSON.stringify(rule.headers ?? {})}`;
+
+function approvedOriginRule(ctx, siteName, declared, rule) {
+  const lock = ctx.deployment.originLock;
+  if (declared !== "ipSecurityRestrictions" || lc(lock?.resource) !== lc(siteName)) return false;
+  return (lock.rules ?? []).some((expected) => lc(expected.name) === lc(ruleName(rule)) && accessRuleKey(expected) === accessRuleKey(rule));
+}
+
+/** Only a reviewed whole-list transition may be exempted from protected what-if deltas. */
+export function originLockTransition(ctx, siteName) {
+  const lock = ctx.deployment.originLock;
+  if (lc(lock?.resource) !== lc(siteName) || !Array.isArray(lock?.rules)) return null;
+  const site = ctx.desired.find("Microsoft.Web/sites", siteName);
+  const sc = site?.properties?.siteConfig;
+  const want = sc?.ipSecurityRestrictions;
+  const live = ctx.live.apps[siteName];
+  if (!Array.isArray(want) || !live?.config) return null;
+  const current = (live.accessrestrictions?.ipSecurityRestrictions ?? live.config.ipSecurityRestrictions ?? [])
+    .filter((r) => Number(r.priority) !== 2147483647);
+  const expected = lock.rules;
+  const complete = (rules) => rules.length === expected.length && new Set(rules.map((r) => lc(ruleName(r)))).size === expected.length &&
+    rules.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r));
+  const liveDefault = live.config.ipSecurityRestrictionsDefaultAction ?? ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction;
+  if (current.length === 0 && complete(want) && lc(liveDefault) === "allow" && lc(sc.ipSecurityRestrictionsDefaultAction) === "deny") return "enable";
+  if (want.length === 0 && current.length > 0 && new Set(current.map((r) => lc(ruleName(r)))).size === current.length &&
+    current.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r)) &&
+    lc(liveDefault) === "deny" && lc(sc.ipSecurityRestrictionsDefaultAction) === "allow") return "rollback";
+  return null;
+}
+
+
 function checkAccessRules(ctx, name, sc, l) {
   // Only rules that are explicitly managed (declared in siteConfig) are compared. The implicit "Allow all" has priority 2147483647.
   for (const [declared, liveKey, label] of [
@@ -132,16 +163,34 @@ function checkAccessRules(ctx, name, sc, l) {
     const want = sc[declared];
     if (!Array.isArray(want)) continue;
     const liveRules = (l.accessrestrictions?.[liveKey] ?? l.config?.[liveKey] ?? []).filter((r) => Number(r.priority) !== 2147483647);
+    const lock = declared === "ipSecurityRestrictions" && lc(ctx.deployment.originLock?.resource) === lc(name)
+      ? ctx.deployment.originLock : null;
     const wantNames = new Set(want.map((r) => lc(r.name)));
-    for (const r of liveRules) {
-      if (!wantNames.has(lc(ruleName(r)))) ctx.findings.fail("ACCESS-RULE-REMOVED", name, `${label} access rule "${ruleName(r)}" exists live and is not declared`);
+    if (lock && want.length > 0 && (want.length !== lock.rules.length ||
+      wantNames.size !== lock.rules.length ||
+      want.some((r) => !approvedOriginRule(ctx, name, declared, r)))) {
+      ctx.findings.fail("ACCESS-ORIGIN-SET", name, "enabled origin lock must declare exactly the manifest's named ranges, actions and priorities");
     }
-    const liveNames = new Set(liveRules.map((r) => lc(ruleName(r))));
+    for (const r of liveRules) {
+      if (!wantNames.has(lc(ruleName(r)))) {
+        if (lock && want.length === 0 && approvedOriginRule(ctx, name, declared, r)) {
+          ctx.findings.allowed("ACCESS-ORIGIN-ROLLBACK", name, `${label} approved Cloudflare rule "${ruleName(r)}" is removed`);
+        } else {
+          ctx.findings.fail("ACCESS-RULE-REMOVED", name, `${label} access rule "${ruleName(r)}" exists live and is not declared`);
+        }
+      }
+    }
+    const liveByName = new Map(liveRules.map((r) => [lc(ruleName(r)), r]));
     for (const r of want) {
-      if (!liveNames.has(lc(r.name))) {
+      const liveRule = liveByName.get(lc(r.name));
+      if (!liveRule) {
         const allowance = allowedChange(ctx.deployment, name, `${declared}:${r.name}`, undefined, undefined);
-        if (allowance) ctx.findings.allowed("ACCESS-RULE-NEW", name, `${label} access rule "${r.name}" is added (${allowance.why ?? "listed in manifest"})`);
+        if (lock && approvedOriginRule(ctx, name, declared, r)) {
+          ctx.findings.allowed("ACCESS-ORIGIN-NEW", name, `${label} approved Cloudflare rule "${r.name}" is added`);
+        } else if (allowance) ctx.findings.allowed("ACCESS-RULE-NEW", name, `${label} access rule "${r.name}" is added (${allowance.why ?? "listed in manifest"})`);
         else ctx.findings.fail("ACCESS-RULE-NEW", name, `${label} access rule "${r.name}" would be added and is not listed in the manifest`);
+      } else if (accessRuleKey(r) !== accessRuleKey(liveRule)) {
+        ctx.findings.fail("ACCESS-RULE-CHANGE", name, `${label} access rule "${r.name}" would change action, priority or address`);
       }
     }
   }

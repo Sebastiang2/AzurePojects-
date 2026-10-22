@@ -32,7 +32,17 @@ test("three consecutive 200 responses at the approved revision pass without cach
   const result = await scenario([response(200), response(200), response(200)]);
   assert.equal(result.passed, true);
   assert.equal(new Set(result.calls.map((call) => call.url)).size, 3);
+  assert.ok(result.calls.every((call) => call.url.startsWith("https://api.cetchapp.com/v1/extras/ready?")));
   assert.ok(result.calls.every((call) => call.options.cache === "no-store" && call.options.redirect === "manual"));
+});
+
+test("direct-origin readiness remains an explicit pre-lock diagnostic", async () => {
+  const urls = [];
+  const passed = await verifyReady({ revision, origin: "https://app-invi-data-api-prod-001.azurewebsites.net/v1/extras",
+    attempts: 3, consecutive: 3, pauseMs: 0, fetcher: async (url) => { urls.push(url); return response(200); },
+    sleeper: async () => {}, log: () => {} });
+  assert.equal(passed, true);
+  assert.ok(urls.every((url) => url.startsWith("https://app-invi-data-api-prod-001.azurewebsites.net/v1/extras/ready?")));
 });
 
 test("initial 502, timeout and delayed recovery require a fresh three-response streak", async () => {
@@ -65,6 +75,7 @@ test("rollback liveness can recover without /ready or a revision header", async 
   assert.ok(result.calls.every((call) => call.url.includes("/v1/extras/is-up?")));
 });
 
+
 test("deploy.sh checks the pinned revision both before and after its single deployment call", () => {
   const script = readFileSync(new URL("../../deploy.sh", import.meta.url), "utf8");
   const manifest = JSON.parse(readFileSync(new URL("../../../safety/manifest.json", import.meta.url), "utf8"));
@@ -76,5 +87,5 @@ test("deploy.sh checks the pinned revision both before and after its single depl
   assert.ok(secrets >= 0 && secrets < first && first < deploy && deploy < last);
   assert.match(script, /if \[ "\$WARMUP_MODE" = "true" \]; then[\s\S]*?verify-data-api-ready\.mjs" "\$REQUIRED_BACKEND_REVISION" 3 3/);
   assert.match(script, /elif \[ "\$WARMUP_MODE" = "false" \]; then[\s\S]*?verify-data-api-ready\.mjs" --liveness 30 3/);
-  assert.match(script, /read\(process\.argv\[2\]\) !== "false"/);
+  assert.match(script, /read\(process\.argv\[2\]\) !== dedicated/);
 });

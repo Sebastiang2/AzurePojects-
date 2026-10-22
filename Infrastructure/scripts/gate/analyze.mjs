@@ -15,7 +15,7 @@ import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Findings, canonical, readJson, sha256, lc } from "./lib/util.mjs";
 import { loadDesired, loadLive } from "./lib/model.mjs";
-import { checkSites, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
+import { checkSites, originLockTransition, checkAppSettings, checkSlotSettings, checkAuthSettings, checkHostBindings, checkPublishingPolicies, checkSlots } from "./lib/checks-sites.mjs";
 import { checkNetwork, checkDiagnostics, checkDataAndVault, checkRbac, checkIdentities, checkStaticSites } from "./lib/checks-infra.mjs";
 import { evaluateWhatIf } from "./lib/whatif.mjs";
 
@@ -68,6 +68,37 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
       shapeProblems.push(`${where}: property ${JSON.stringify(c.property)} is none of setting:<NAME>, ipSecurityRestrictions:<rule>, siteConfig.<name> or a site property`);
     }
   });
+  if (deployment.originLock !== undefined) {
+    const lock = deployment.originLock;
+    const where = `deployments.${deploymentKey}.originLock`;
+    if (typeof lock?.resource !== "string" || !lock.resource) shapeProblems.push(`${where}: resource is required`);
+    if (typeof lock?.why !== "string" || lock.why.trim().length < 10) shapeProblems.push(`${where}: why is required`);
+    if (lock?.requiredLiveAppSettings !== undefined) {
+      const allowed = new Set(["WebDrafts__Enabled", "WebDrafts__TrustCloudflareConnectingIp", "PlaceSuggestions__Enabled", "WebDrafts__PlaceSuggestionsPaused", "WEBSITE_WARMUP_PATH", "WEBSITE_WARMUP_STATUSES"]);
+      if (!lock.requiredLiveAppSettings || typeof lock.requiredLiveAppSettings !== "object" || Array.isArray(lock.requiredLiveAppSettings)) {
+        shapeProblems.push(`${where}: requiredLiveAppSettings must be a map of reviewed non-secret settings`);
+      } else for (const [name, value] of Object.entries(lock.requiredLiveAppSettings)) {
+        if (!allowed.has(name) || typeof value !== "string") shapeProblems.push(`${where}: invalid required live setting ${JSON.stringify(name)}`);
+      }
+    }
+    if (!Array.isArray(lock?.rules) || lock.rules.length === 0) shapeProblems.push(`${where}: exact rules are required`);
+    else {
+      const names = new Set(), priorities = new Set();
+      lock.rules.forEach((rule, i) => {
+        const at = `${where}.rules[${i}]`;
+        if (!rule || typeof rule !== "object" || Object.keys(rule).sort().join(",") !== "action,ipAddress,name,priority") {
+          shapeProblems.push(`${at}: only action, ipAddress, name and priority are permitted`);
+          if (!rule || typeof rule !== "object") return;
+        }
+        if (rule.action !== "Allow" || !Number.isInteger(rule.priority) || rule.priority < 1 ||
+          typeof rule.name !== "string" || !rule.name || typeof rule.ipAddress !== "string" || !rule.ipAddress.includes("/")) {
+          shapeProblems.push(`${at}: invalid named allow rule`);
+        }
+        if (names.has(lc(rule.name)) || priorities.has(rule.priority)) shapeProblems.push(`${at}: duplicate name or priority`);
+        names.add(lc(rule.name)); priorities.add(rule.priority);
+      });
+    }
+  }
   if (deployment.mysqlServer !== undefined) {
     const s = deployment.mysqlServer;
     const where = `deployments.${deploymentKey}.mysqlServer`;
@@ -144,6 +175,10 @@ export function analyze({ work, manifestPath, deploymentKey, now = new Date() })
   let whatIfSummary = { noise: {}, counts: {} };
   if (desired.ok) {
     checkSites(ctx);
+    if (deploymentKey === "main" && deployment.originLock && originLockTransition(ctx, deployment.originLock.resource)) {
+      findings.fail("ORIGIN-MAIN-TRANSITION", deployment.originLock.resource,
+        "a full main deployment may not activate or roll back the origin lock; prepare a scoped PATCH with separate approval");
+    }
     checkAppSettings(ctx);
     checkSlotSettings(ctx);
     checkAuthSettings(ctx);

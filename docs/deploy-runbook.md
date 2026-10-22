@@ -205,26 +205,51 @@ az webapp restart -g $RG -n app-invi-data-api-prod-001 --subscription $SUB
 Gjenopprettingen er bare en midlertidig stabilisering: Bicep og live er nå ulike igjen. Kjør gaten (`preflight.sh`), finn årsaken,
 rett i Bicep via PR og utrull på nytt. Ikke la live-endringen bli stående som håndlaget drift.
 
-### 5.2.1 Origin-lock: eksplisitt, testbar nødrollback
+### 5.2.1 Origin-lock: avgrenset PATCH og eksplisitt rollback
 
-Når `dataApiCloudflareOriginLockEnabled` har vært `true`, skal en rollback **ikke** gjøres ved å utelate
-`ipSecurityRestrictions` fra malen eller med et manuelt portal-kall. Sett parameteren til `false` i en godkjent PR og bruk
-samme `main`-sikkerhetsgate. Modulen deklarerer da eksplisitt `ipSecurityRestrictions: []` og
-`ipSecurityRestrictionsDefaultAction: 'Allow'`; det fjerner de navngitte Cloudflare-reglene i stedet for å la dem bli stående.
-Den effektive verdien av `WebDrafts__TrustCloudflareConnectingIp` er bundet til origin-locken, slik at den blir `false` når
-origin-locken er `false`, selv om parameteren feilaktig ikke ble slått av samtidig.
+**Produksjonsendring er blokkert.** ARM incremental oppdaterer en deklarert
+`Microsoft.Web/sites/config/web`-ressurs som et helt ressursobjekt. Den tidligere, sparsomme
+Bicep-malen er fjernet: Azure what-if viste bare to deltas, men live `web` har flere
+ikke-tomme egenskaper som ikke finnes i det projiserte objektet, blant annet VNet-binding
+og autentiseringsinnstillinger. En slik what-if er ikke bevis for at de utelatte verdiene bevares.
+`main`-sikkerhetsgaten stopper nå både aktivering og rollback via full Bicep-deploy.
 
-Gjør rollback i to deployer: først sett `webDraftsTrustCloudflareConnectingIp=false` mens origin-locken fortsatt er på, og
-verifiser den kjørende appinnstillingen. Først deretter settes `dataApiCloudflareOriginLockEnabled=false`. Dette eliminerer
-også et eventuelt ordensvindu mellom oppdateringen av App Settings og siteConfig i ARM.
+`Infrastructure/scripts/origin-lock-patch-plan.mjs` er et **read-only** planverktøy.
+Det leser live `config/web` og de seks nødvendige, ikke-hemmelige App Settings-verdiene,
+krever uendret SCM-separasjon, Always On, runtime, Health Check og kjent hovedsidetilstand,
+og lager en PATCH-body med **bare** `ipSecurityRestrictions` og
+`ipSecurityRestrictionsDefaultAction`. Det har ingen skrivemodus. Testene dekker både
+aktivering og rollback, ukjente regler, endret adresse, SCM-arv og aktive sikkerhetsflagg.
+Bruk `node Infrastructure/scripts/origin-lock-patch-plan.mjs enable` for å inspisere
+planen; for rollback brukes `rollback`. Microsoft.Web API `2024-11-01` har en egen
+PATCH-operasjon for `config/web`. En produksjons-PATCH krever egen godkjenning,
+oppdatert read-only plan rett før skriving og etterkontroll av **alle** live egenskaper.
+Ingen ARM what-if kan brukes som garanti for en separat PATCH-operasjon; test
+bevaringssemantikken i et trygt App Service-miljø før produksjonsgodkjenning.
 
-Før godkjenning skal `bash Infrastructure/scripts/deploy.sh --deployment main --dry-run` bestå og rapporten vise at bare
-Data API-ets hovedrestriksjoner går fra Cloudflare-listen/`Deny` til tom liste/`Allow`. `scmIpSecurityRestrictions` og
-`scmIpSecurityRestrictionsUseMain=false` skal være uendret, slik at GitHub Actions/Kudu beholder sin egen tilgangsvei.
-Etter den godkjente deployen leses Access Restrictions på nytt: hovedsiden skal bare ha App Services implisitte «Allow all»,
-mens SCM fortsatt har samme «Allow all»-regel og `useMain=false`. Lagre før-/etterrapporten; ikke påstå at rollback er testet
-før akkurat denne kontrollerte sekvensen har kjørt.
+Før aktivering må eier og hensikt for de 12 gjentatte direkte 404-kallene identifiseres
+med godkjente tilgangslogger. App Insights maskerte IP og viste ingen brukeragent i
+tilgjengelig telemetri. De direkte readiness- og smoke-skriptene må migreres eller få
+en godkjent intern probevei. Cloudflare-regelen er sett aktiv for `api.cetchapp.com`
+med `Set static` for `X-Invi-Origin-Verify`, men levering og korrekt verdi ved Azure
+må bevises ved en server-side boolsk sjekk uten å logge header eller secret. Sammenlign
+de 15 IPv4- og 7 IPv6-nettene i manifestet med Cloudflares publiserte lister rett
+før en eventuell endring. Verifiser også at intern startup warm-up virker når direkte
+ekstern tilgang blokkeres.
 
+Etter en særskilt godkjent PATCH: tre påfølgende HTTP 200 fra offentlig
+`https://api.cetchapp.com/v1/extras/ready` med riktig SHA; direkte ekstern
+Azure-host skal avvises. Sjekk SCM, warm-up, Always On, runtime, TLS, auth,
+CORS, SignalR, API, 5xx og unntak. Sammenlign hele ikke-hemmelige
+`config/web` før/etter; eneste tillatte forskjeller er de to hovedsidefeltene.
+Stopp ved avvik. Ikke kjør automatisk ny PATCH, deploy eller restart.
+
+Rollback er en separat godkjent PATCH med `rollback`-planen: bare kjent
+Cloudflare-liste + `Deny` kan gå til tom liste + `Allow`. Dersom
+`WebDrafts__TrustCloudflareConnectingIp` senere er aktivert, slå av tilliten
+og verifiser den først. Verifiser offentlig og direkte readiness, SCM og alle
+ikke-hemmelige `web`-egenskaper etter rollback. Denne rollbacken er testet
+som planlogikk, men er ikke utført i produksjon.
 ### 5.3 MySQL-passordet
 
 En utrulling av `main` endrer ikke MySQL-passordet: serveren skrives ikke (§2.3), og gaten stopper alt som ville sendt et

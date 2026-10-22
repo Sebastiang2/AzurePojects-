@@ -1,6 +1,7 @@
 // Judges the reduced what-if result (summarize-whatif.mjs output) against the manifest. what-if is one of three independent
 // signals (the others are the offline desired-vs-live checks and the RBAC/evidence checks); it is never trusted alone.
 import { lc, normalizePath, globToRegExp, isExpression } from "./util.mjs";
+import { originLockTransition } from "./checks-sites.mjs";
 
 const PROTECTED = /(subnets|securityRules|ipSecurityRestrictions|scmIpSecurityRestrictions|hostNameSslStates|hostNameBindings|accessPolicies|userAssignedIdentities|privateEndpointConnections|delegations|serviceEndpoints|virtualNetworkRules|identity)(\[|\.|$)/i;
 
@@ -87,6 +88,52 @@ export function evaluateWhatIf(ctx) {
           const rule = matchNoise(manifest, change.type, d.path, d.op);
           if (rule) {
             countNoise(rule);
+            continue;
+          }
+          // The reduced what-if hides array bodies. Accept only a whole, manifest-exact transition independently
+          // verified against the desired snapshot and live access rules; never exempt SCM or another site.
+          const originSite = deployment.originLock?.resource;
+          const fullOrigin = lc(change.type) === "microsoft.web/sites" && lc(change.name) === lc(originSite);
+          const originPrefix = "properties.siteConfig.";
+          if (fullOrigin &&
+            new RegExp(`^${originPrefix.replaceAll(".", "\\.")}ipSecurityRestrictions(?:DefaultAction|(?:\\[\\d+\\])?(?:\\.[A-Za-z]+)?)$`).test(d.path)) {
+            const desiredSite = ctx.desired.find("Microsoft.Web/sites", originSite);
+            const desiredConfig = desiredSite?.properties?.siteConfig;
+            const liveSite = live.apps[originSite];
+            const liveRules = (liveSite?.accessrestrictions?.ipSecurityRestrictions ?? liveSite?.config?.ipSecurityRestrictions ?? [])
+              .filter((r) => Number(r.priority) !== 2147483647);
+            const baseline = liveSite?.config?.ipSecurityRestrictionsDefaultAction == null &&
+              lc(ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              lc(desiredConfig?.ipSecurityRestrictionsDefaultAction) === "allow" &&
+              liveRules.length === 0 && desiredConfig?.ipSecurityRestrictions?.length === 0;
+            // Azure reports the implicit Allow default as null, then what-if reports an explicit
+            // Allow as Create. This is safe only while both live and desired rule lists are empty.
+            if (baseline && d.path === `${originPrefix}ipSecurityRestrictionsDefaultAction` &&
+              d.op === "Create" && d.before == null && lc(d.after) === "allow") {
+              findings.allowed("WHATIF-ORIGIN-BASELINE", subject, `${d.path} makes the existing implicit Allow explicit while both main-site rule lists stay empty`);
+              continue;
+            }
+            const transition = originLockTransition(ctx, originSite);
+            const expected = deployment.originLock.rules;
+            const relevant = transition === "enable" ? d.after : d.before;
+            const observedNames = [relevant?.name, ...(relevant?.names ?? [])].filter(Boolean);
+            const knownNames = new Set(expected.map((r) => lc(r.name)));
+            const indexed = /ipSecurityRestrictions\[(\d+)\](?:\.(name|priority|action|ipAddress))?$/.exec(d.path);
+            const member = indexed ? expected[Number(indexed[1])] : null;
+            const scalar = transition === "enable" ? d.after : d.before;
+            const memberMatches = !indexed || (member && (!scalar ||
+              (typeof scalar === "object" ? (!scalar.name || lc(scalar.name) === lc(member.name)) :
+                indexed[2] && lc(scalar) === lc(member[indexed[2]]))));
+            const arrayMatches = d.after?.kind !== "array" ||
+              (transition === "enable" ? d.after.length === expected.length && d.after.names?.length === expected.length : d.after.length === 0);
+            const defaultMatches = !d.path.endsWith("DefaultAction") || d.after === undefined ||
+              lc(d.after) === (transition === "enable" ? "deny" : "allow");
+            const namesMatch = observedNames.every((name) => knownNames.has(lc(name)));
+            if (transition && memberMatches && arrayMatches && defaultMatches && namesMatch) {
+              findings.allowed("WHATIF-ORIGIN-LOCK", subject, `${d.path} is the reviewed ${transition} transition (${deployment.originLock.why})`);
+            } else {
+              findings.fail("WHATIF-ORIGIN-LOCK", subject, `${d.path} is not an exact reviewed origin-lock transition`);
+            }
             continue;
           }
           // what-if reads only part of a site's configuration; a "Create" in siteConfig is judged against the live config.
