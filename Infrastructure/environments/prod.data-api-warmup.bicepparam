@@ -17,13 +17,13 @@ param firebaseBucket = 'cetchapp-8b5a6.appspot.com'
 param frontendBaseUrl = 'https://app.cetchapp.com'
 param inviteBaseUrl = 'https://app.cetchapp.com/'
 
-param webDraftsEnabled = false
+param webDraftsEnabled = true
 param webDraftsRequireCaptcha = true
-param webDraftsTrustCloudflareConnectingIp = false
-param dataApiCloudflareOriginLockEnabled = false
-// Production already has this fail-closed brake; keep it synchronized with the canonical parameters.
-param webDraftsPlaceSuggestionsPaused = true
-param placeSuggestionsEnabled = false
+param webDraftsTrustCloudflareConnectingIp = true
+param dataApiCloudflareOriginLockEnabled = true
+// Off in production since the 2026-10-22 place-suggestions launch; keep it synchronized with the canonical parameters.
+param webDraftsPlaceSuggestionsPaused = false
+param placeSuggestionsEnabled = true
 param dataApiReadinessWarmupEnabled = true
 param dataApiActivityCreatorId = 1636
 
