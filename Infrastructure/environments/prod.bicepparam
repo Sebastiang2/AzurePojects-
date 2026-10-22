@@ -70,20 +70,19 @@ param frontendBaseUrl = 'https://app.cetchapp.com'
 // template and production agree.
 param inviteBaseUrl = 'https://app.cetchapp.com/'
 
-// Off in production (2026-10-02) until Turnstile and the other WebDrafts__*
-// settings are configured; the website's create flow is off as well.
-param webDraftsEnabled = false
+// On in production since 2026-10-22 (Turnstile rotated, cAI live on invi.lol).
+param webDraftsEnabled = true
 
-// Captcha required. Keep CF client-IP trust off until Cloudflare peer/origin-lock verification is approved.
+// Captcha required. CF client-IP trust is on in production; it only takes effect with the origin lock below.
 param webDraftsRequireCaptcha = true
-param webDraftsTrustCloudflareConnectingIp = false
-// Do not enable until Cloudflare-only access and zone verification are proven.
-param dataApiCloudflareOriginLockEnabled = false
-// Explicit rollback brake; leave on until moderation launch is separately approved.
-param webDraftsPlaceSuggestionsPaused = true
+param webDraftsTrustCloudflareConnectingIp = true
+// On in production (verified 2026-10-22: direct 403, public 200, SCM 401). A deployment with false would remove it.
+param dataApiCloudflareOriginLockEnabled = true
+// Rollback brake for place suggestions; off since the 2026-10-22 launch (true stops submissions).
+param webDraftsPlaceSuggestionsPaused = false
 
-// "Foreslå et sted" needs this AND webDraftsEnabled. Off.
-param placeSuggestionsEnabled = false
+// "Foreslå et sted" needs this AND webDraftsEnabled. On in production since 2026-10-22.
+param placeSuggestionsEnabled = true
 
 // Matches the warm-up already active in production. Keep this synchronized with the dedicated
 // data-api-warmup parameter whenever that control is changed, so a full main deployment cannot remove it.
