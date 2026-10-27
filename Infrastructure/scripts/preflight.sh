@@ -135,7 +135,23 @@ node "$(to_native "$GATE/strip-secure.mjs")" "$(to_native "$WORK/eval/Infrastruc
 # The lint configuration would reject the copy (secrets without @secure()); lint is judged on the real files in step 2.
 rm -f "$WORK/eval/Infrastructure/bicepconfig.json"
 PARAM_EVAL="$WORK/eval/$PARAMETERS"
-if (cd "$WORK/eval" && az bicep snapshot --file "$(to_native "$PARAM_EVAL")" --resource-group "$RG" --subscription-id "$SUB" --location "$LOCATION" --only-show-errors >/dev/null 2>"$WORK/snapshot.err"); then
+# Some Azure CLI releases have no `az bicep snapshot` (2.82, the newest on Homebrew, does not). The Bicep CLI that az
+# installs (~/.azure/bin/bicep) has the same command with the same inputs and writes the same <name>.snapshot.json, so it
+# is used only when az lacks the subcommand. Either way the evaluation is offline: no Azure call.
+evaluate_snapshot() {
+  if az bicep snapshot --help >/dev/null 2>&1; then
+    az bicep snapshot --file "$1" --resource-group "$RG" --subscription-id "$SUB" --location "$LOCATION" --only-show-errors
+    return
+  fi
+  local bicep_bin candidate
+  bicep_bin="$(command -v bicep 2>/dev/null || true)"
+  for candidate in "$HOME/.azure/bin/bicep" "$HOME/.azure/bin/bicep.exe"; do
+    if [ -z "$bicep_bin" ] && [ -x "$candidate" ]; then bicep_bin="$candidate"; fi
+  done
+  [ -n "$bicep_bin" ] || { echo "neither az bicep snapshot nor the Bicep CLI is available" >&2; return 2; }
+  "$bicep_bin" snapshot "$1" --resource-group "$RG" --subscription-id "$SUB" --location "$LOCATION"
+}
+if (cd "$WORK/eval" && evaluate_snapshot "$(to_native "$PARAM_EVAL")" >/dev/null 2>"$WORK/snapshot.err"); then
   mv "${PARAM_EVAL%.bicepparam}.snapshot.json" "$WORK/snapshot.json" && step snapshot 0 || step snapshot 1
 else
   step snapshot 1

@@ -459,3 +459,18 @@ test("every allowedChanges entry must be one of the documented shapes", () => {
   const ok = withEntry({ resource: "app-test", property: "setting:SOME_NAME", before: "a", after: "b", why });
   assert.ok(!ids(ok).includes("MANIFEST-ENTRY-SHAPE"), JSON.stringify(ids(ok)));
 });
+
+test("the offline evaluation falls back to the Bicep CLI only when az has no snapshot command", () => {
+  const source = readFileSync(join(scriptsDir, "preflight.sh"), "utf8");
+  const fn = /evaluate_snapshot\(\) \{[\s\S]*?\n\}/.exec(source)?.[0] ?? "";
+  assert.ok(fn, "evaluate_snapshot is defined");
+  // az first; the fallback is reached only when `az bicep snapshot --help` fails
+  assert.ok(fn.indexOf("az bicep snapshot --help") < fn.indexOf('"$bicep_bin" snapshot'));
+  assert.match(fn, /az bicep snapshot --help >\/dev\/null 2>&1; then\s+az bicep snapshot --file "\$1"[^\n]*\n\s+return/);
+  // same inputs on both paths, and nothing but `snapshot` is ever run through the Bicep CLI
+  for (const flag of ['--resource-group "$RG"', '--subscription-id "$SUB"', '--location "$LOCATION"']) {
+    assert.equal(fn.split(flag).length - 1, 2, `${flag} on both paths`);
+  }
+  assert.deepEqual([...fn.matchAll(/"\$bicep_bin" (\w+)/g)].map((m) => m[1]), ["snapshot"]);
+  assert.match(source, /if \(cd "\$WORK\/eval" && evaluate_snapshot /);
+});
