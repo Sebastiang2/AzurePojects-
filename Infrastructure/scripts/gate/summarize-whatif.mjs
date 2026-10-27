@@ -103,11 +103,19 @@ export function summarize(parsed) {
   };
 }
 
+// Azure CLI 2.82 prints this notice on STDOUT, ahead of the JSON, whenever a command compiles Bicep. Exactly this one
+// notice is removed, and only at the very start; anything else that is not JSON still fails.
+const BICEP_INSTALLED_NOTICE = /^Bicep CLI is already installed at '[^'\r\n]*'\. Skipping installation as no specific version was requested\.\r?\n?/;
+
+export function stripCliNotice(text) {
+  return text.replace(BICEP_INSTALLED_NOTICE, "");
+}
+
 // CLI: node summarize-whatif.mjs [outfile]   (stdin = raw what-if JSON; stdout = summary unless outfile is given)
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(0, "utf8"));
+    parsed = JSON.parse(stripCliNotice(readFileSync(0, "utf8")));
   } catch {
     console.error("summarize-whatif: stdin was not JSON");
     process.exit(2);

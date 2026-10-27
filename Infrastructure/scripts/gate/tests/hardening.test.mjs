@@ -474,3 +474,17 @@ test("the offline evaluation falls back to the Bicep CLI only when az has no sna
   assert.deepEqual([...fn.matchAll(/"\$bicep_bin" (\w+)/g)].map((m) => m[1]), ["snapshot"]);
   assert.match(source, /if \(cd "\$WORK\/eval" && evaluate_snapshot /);
 });
+
+test("the what-if reducer drops only the Azure CLI 'Bicep CLI is already installed' notice; other non-JSON still fails", () => {
+  const raw = (prefix) => spawnSync(process.execPath, [join(gateDir, "summarize-whatif.mjs")], {
+    input: prefix + JSON.stringify({ status: "Succeeded", changes: [] }),
+    encoding: "utf8",
+  });
+  const notice = "Bicep CLI is already installed at '/home/u/.azure/bin/bicep'. Skipping installation as no specific version was requested.";
+  assert.equal(raw(`${notice}\n`).status, 0, "the known notice before the JSON is tolerated");
+  assert.equal(raw(notice).status, 0, "also without a line break");
+  assert.equal(raw("").status, 0, "plain JSON still parses");
+  assert.equal(raw(`WARNING: something else\n`).status, 2, "any other prefix still fails");
+  assert.equal(raw(`\n${notice}\n`).status, 2, "the notice is only accepted at the very start");
+  assert.equal(raw(`${notice}\n${notice}\n`).status, 2, "only one notice is removed");
+});
