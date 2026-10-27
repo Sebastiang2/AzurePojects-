@@ -60,7 +60,32 @@ STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 call         account               az account show --subscription "$SUB" --query "{id:id, tenantId:tenantId, name:name, state:state}" -o json
 call         resources             az resource list --subscription "$SUB" -o json
 
+# A site the template creates does not exist yet, and every listing of it would fail as missing evidence. It is skipped
+# only when two independent reads agree: a resource listing that SUCCEEDED does not contain it, AND the site itself answers
+# "not found". Anything else (a failed listing, a permission error, throttling) collects as usual and fails the gate. The
+# analysis then judges the site as new (SITE-NEW) and its creation by the manifest's allowedCreates.
+RESOURCES_RC="$(awk -F'\t' '$1 == "resources" { print $2 }' "$CALLS")"
+EXISTING_SITES="$(node -e '
+try { const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+  console.log(r.filter((x) => /^microsoft\.web\/sites$/i.test(x.type)).map((x) => x.name.toLowerCase()).join("\n")); } catch {}
+' "$(native "$OUT/resources.json")")"
+show_not_found() {
+  local name="$1"; shift
+  if "$@" >/dev/null 2>"$OUT/$name.err"; then return 1; fi
+  grep -Eqi 'ResourceNotFound|could not be found|was not found' "$OUT/$name.err"
+}
+site_absent() {
+  local app="$1"
+  [ "$RESOURCES_RC" = "0" ] || return 1
+  printf '%s\n' "$EXISTING_SITES" | grep -Fxqi -- "$app" && return 1
+  show_not_found "apps/$app.absent" az webapp show -g "$RG" -n "$app" --subscription "$SUB" -o json
+}
+
 for app in "${APPS[@]}"; do
+  if site_absent "$app"; then
+    echo "   $app does not exist yet (not listed, and not found): nothing to collect; judged as a new site"
+    continue
+  fi
   site="$REST/Microsoft.Web/sites/$app"
   call         "apps/$app.show"                   az webapp show -g "$RG" -n "$app" --subscription "$SUB" -o json
   call         "apps/$app.config"                 az webapp config show -g "$RG" -n "$app" --subscription "$SUB" -o json

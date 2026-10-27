@@ -37,7 +37,7 @@ Produksjonsmiljøet består av følgende komponenter:
 
 ### App Services
 - **App Service Plan**: `asp-invi-prod-001` (P0v3, PremiumV3)
-  - Delt mellom Auth API, Data API og Admin app
+  - Delt mellom Auth API, Data API, Admin app og Studio API
   
 - **Auth API**: `app-invi-auth-api-prod-001`
   - Runtime: .NET Core 10.0
@@ -51,6 +51,12 @@ Produksjonsmiljøet består av følgende komponenter:
   - Managed Identity for Key Vault tilgang
   - Application Insights monitoring
   - URL: `https://api.cetchapp.com`
+
+- **Studio API**: `app-invi-studio-api-prod-001`
+  - Runtime: .NET Core 10.0, bakgrunnsjobber i prosessen (Always On, én instans)
+  - VNet integration (satt i site-ressursen, Route All), Core DB `invi`
+  - Hemmeligheter som Key Vault-referanser, tilgang per secret
+  - Lukket (inbound Deny) til koden er deployet og testet; deretter bare planens utgående IP-er
 
 - **Admin App**: `app-invi-admin-prod-001`
   - Runtime: Node.js 22-lts (Next.js server)
@@ -108,12 +114,16 @@ Infrastructure/
 │   ├── adminapp.bicep          # Admin web app (Next.js)
 │   ├── adminapp-domain.bicep   # Custom domain for admin app
 │   ├── adminapp-rbac.bicep     # RBAC for admin app Key Vault tilgang
+│   ├── studioapi.bicep         # Studio API (.NET) + GitHub deploy-identitet
+│   ├── studioapi-rbac.bicep    # RBAC for Studio API (Key Vault per secret, Website Contributor)
 │   └── rbac-keyvault-secret-scope.bicep  # Helper for Key Vault RBAC
 ├── environments/               # Parameter-filer per miljø
 │   ├── prod.bicepparam         # Hovedparametere for prod (main.bicep)
 │   ├── prod.adminapp.bicepparam  # Admin app deployment (A)
 │   ├── prod.adminapp.rbac-owner.bicepparam  # Admin app RBAC (B, krever Owner)
 │   ├── prod.adminapp.domain-admin-cetchapp-com.bicepparam  # Admin domain (C)
+│   ├── prod.studioapi.bicepparam  # Studio API deployment (A)
+│   ├── prod.studioapi.rbac-owner.bicepparam  # Studio API RBAC (B, krever Owner)
 │   ├── prod.staticwebapp-web.bicepparam  # Static Web App (uten domener)
 │   ├── prod.staticwebapp-web.domain-invi-lol.bicepparam
 │   ├── prod.staticwebapp-web.domain-www-invi-lol.bicepparam
@@ -177,6 +187,8 @@ Nøkler (`--deployment`) og hva hver får endre står i `Infrastructure/safety/m
 | `adminapp-a` | `prod.adminapp.bicepparam` | admin-appen (Contributor) |
 | `adminapp-b-rbac` | `prod.adminapp.rbac-owner.bicepparam` | Key Vault-tilgang for admin (krever Owner) |
 | `adminapp-c-domain` | `prod.adminapp.domain-admin-cetchapp-com.bicepparam` | domene og TLS for admin |
+| `studioapi-a` | `prod.studioapi.bicepparam` | Studio API og GitHub deploy-identiteten (Contributor) |
+| `studioapi-b-rbac` | `prod.studioapi.rbac-owner.bicepparam` | Key Vault-tilgang og deploy-rett for Studio API (krever Owner) |
 | `swa-web` | `prod.staticwebapp-web.bicepparam` | Static Web App (uten domener) |
 | `swa-domain-app-cetchapp-com`, `swa-domain-invi-lol`, `swa-domain-www-invi-lol` | `prod.staticwebapp-web.domain-*.bicepparam` | ett domene per utrulling |
 
@@ -200,6 +212,15 @@ bash Infrastructure/scripts/deploy.sh --deployment adminapp-c-domain   # C: dome
 ```
 
 **Rekkefølge**: A (uten Easy Auth) → Entra app registration (manuelt) → Key Vault secret (manuelt) → B → DNS (manuelt) → C → A (med Easy Auth) → Application code
+
+#### Studio API (to-trinns deployment)
+
+```bash
+bash Infrastructure/scripts/deploy.sh --deployment studioapi-a        # A: Contributor er nok
+bash Infrastructure/scripts/deploy.sh --deployment studioapi-b-rbac   # B: krever Owner-rolle
+```
+
+**Rekkefølge**: A (lukket) → Key Vault secrets (manuelt) → B → repo, startkommando og innstillinger i `prod.studioapi.bicepparam` → A → workflow i Studio-repoet → test → A med `studioInboundOpen = true`. Se kommentaren øverst i `prod.studioapi.bicepparam`.
 
 #### Static Web App
 
@@ -240,7 +261,7 @@ App Services bruker system-assigned managed identity for å lese hemmeligheter f
 App Service → Managed Identity → RBAC → Key Vault → Secrets
 ```
 
-RBAC-tildeling er definert i `modules/rbac.bicep` (for APIs) og `modules/adminapp-rbac.bicep` (for admin app).
+RBAC-tildeling er definert i `modules/rbac.bicep` (for APIs), `modules/adminapp-rbac.bicep` (for admin app) og `modules/studioapi-rbac.bicep` (for Studio API).
 
 ### GitHub Actions Deployment
 
@@ -248,6 +269,7 @@ CI/CD bruker federated credentials med GitHub OIDC:
 
 - **Auth API**: `id-gha-invi-auth-api-prod-001`
 - **Data API**: `id-gha-invi-data-api-prod-001`
+- **Studio API**: `id-gha-invi-studio-api-prod-001` (deklarert i `studioapi.bicep`, ikke håndlaget)
 - Rolle: Website Contributor (på app-nivå, ikke subscription-nivå)
 
 Identitetene og credentials er opprettet utenfor Bicep. `deploy.sh` oppretter dem ikke lenger; sikkerhetsgaten leser dem og
@@ -268,6 +290,7 @@ stopper ved en ny eller endret tildeling/credential som ikke er gjennomgått i m
 - Auth API default hostname: `app-invi-auth-api-prod-001.azurewebsites.net`
 - Data API default hostname: `app-invi-data-api-prod-001.azurewebsites.net`
 - Admin app default hostname: `app-invi-admin-prod-001.azurewebsites.net`
+- Studio API default hostname: `app-invi-studio-api-prod-001.azurewebsites.net`
 
 ## Hva er IKKE i dette repoet / Out of Scope
 

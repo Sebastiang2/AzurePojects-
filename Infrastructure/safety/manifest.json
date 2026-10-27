@@ -467,7 +467,8 @@
           "subject": "repo:CetchApp/cetchapp-onboarding-admin:environment:production",
           "status": "active"
         }
-      }
+      },
+      "id-gha-invi-studio-api-prod-001": {}
     }
   },
   "residualRisks": [
@@ -731,6 +732,110 @@
       "secureEnvironment": [],
       "allowedCreates": [],
       "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": []
+    },
+    "studioapi-a": {
+      "description": "Studio API (.NET 10) with its Application Insights, settings, diagnostics and GitHub deploy identity. Contributor is enough. First deployment creates everything; the site stays closed (inbound Deny)",
+      "template": "Infrastructure/modules/studioapi.bicep",
+      "parameters": "Infrastructure/environments/prod.studioapi.bicepparam",
+      "deploymentName": "invi-prod-studioapi-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-api-prod-001",
+          "why": "first deployment of the Studio API"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-api-prod-001",
+          "why": "first deployment of the Studio API; created closed (no allow rule, inbound Deny)"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-api-prod-001/appsettings",
+          "why": "first deployment of the Studio API"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-api-prod-001/*",
+          "why": "first deployment of the Studio API; FTP and SCM basic authentication off"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-api-prod-001",
+          "why": "first deployment of the Studio API"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-api-prod-001",
+          "why": "GitHub deploy identity for the Studio API; no role until studioapi-b-rbac"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-api-prod-001/github-production",
+          "why": "only once githubRepository is set (phase 2); add the credential and its subject to identities.known in the same PR"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [
+        {
+          "id": "R-STUDIO-KV-REFERENCES",
+          "text": "The Key Vault references resolve only after studioapi-b-rbac and only for secrets that exist. Until then the app gets the literal reference string as the value. Check that every reference shows as Resolved before code is deployed."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-api-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-api-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-api-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-api-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-api-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-api-prod-001/github-production"
+        }
+      ]
+    },
+    "studioapi-b-rbac": {
+      "description": "Key Vault Secrets User for the Studio API, per secret, and Website Contributor on the Studio API for its GitHub deploy identity. Needs Owner or RBAC Administrator. Run after studioapi-a. The Website Contributor assignment is named from the identity's principal id: add it to allowedCreates (and, after the deployment, every new assignment to rbac.knownAssignments) once studioapi-a has created the identity",
+      "template": "Infrastructure/modules/studioapi-rbac.bicep",
+      "parameters": "Infrastructure/environments/prod.studioapi.rbac-owner.bicepparam",
+      "deploymentName": "invi-prod-studioapi-rbac-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [
+        {
+          "module": "secretAccess",
+          "why": "role assignments named with guid() on the Studio API's principal, one per secret; verified by the RBAC checks against live",
+          "count": 5
+        }
+      ],
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
       "allowedChanges": [],

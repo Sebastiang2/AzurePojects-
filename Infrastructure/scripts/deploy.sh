@@ -4,6 +4,7 @@
 #   Infrastructure/scripts/deploy.sh --deployment <key> [--dry-run] [--allow-non-main]
 #
 #   --deployment  key in Infrastructure/safety/manifest.json: main, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
+#                 studioapi-a, studioapi-b-rbac,
 #                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol
 #   --dry-run     rehearsal: runs every check and the gate, prints what would be deployed and every reason a real run would
 #                 stop, and NEVER deploys (it also needs no terminal and tolerates a dirty tree and missing secure parameters,
