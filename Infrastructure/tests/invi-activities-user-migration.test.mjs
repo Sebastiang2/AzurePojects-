@@ -74,7 +74,7 @@ test("origin-lock rollback is explicit and its WebDrafts brake is safety-gated",
   assert.match(appService, /effectiveWebDraftsTrustCloudflareConnectingIp\s*=\s*dataApiCloudflareOriginLockEnabled\s*&&\s*webDraftsTrustCloudflareConnectingIp/);
   assert.match(appService, /WebDrafts__TrustCloudflareConnectingIp:\s*toLower\(string\(effectiveWebDraftsTrustCloudflareConnectingIp\)\)/);
   assert.ok(dataApi.required.includes("WebDrafts__PlaceSuggestionsPaused"));
-  assert.equal(dataApi.mustEqual.WebDrafts__PlaceSuggestionsPaused, "true");
+  assert.equal(dataApi.mustEqual.WebDrafts__PlaceSuggestionsPaused, "false");
   assert.ok(manifest.deployments.main.allowedNewSettings["app-invi-data-api-prod-001"].includes("WebDrafts__PlaceSuggestionsPaused"));
 });
 
@@ -90,8 +90,12 @@ test("origin lock has the exact reviewed ranges and never applies main restricti
   assert.deepEqual(declared, deployment.originLock.rules);
   assert.equal(declared.filter((r) => r.name.includes("-v4-")).length, 15);
   assert.equal(declared.filter((r) => r.name.includes("-v6-")).length, 7);
-  assert.match(params, /^param dataApiCloudflareOriginLockEnabled = false$/m);
-  assert.match(params, /^param webDraftsTrustCloudflareConnectingIp = false$/m);
+  assert.match(params, /^param dataApiCloudflareOriginLockEnabled = true$/m);
+  assert.match(params, /^param webDraftsTrustCloudflareConnectingIp = true$/m);
+  assert.match(params, /^param webDraftsRequireCaptcha = true$/m);
+  assert.match(params, /^param webDraftsEnabled = true$/m);
+  assert.match(params, /^param placeSuggestionsEnabled = true$/m);
+  assert.match(params, /^param webDraftsPlaceSuggestionsPaused = false$/m, "the place-suggestions brake is available but off");
   assert.match(appService, /scmIpSecurityRestrictions: \[\]/);
   assert.match(appService, /scmIpSecurityRestrictionsDefaultAction: 'Allow'/);
   assert.match(appService, /scmIpSecurityRestrictionsUseMain: false/);
