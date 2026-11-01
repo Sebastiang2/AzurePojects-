@@ -114,7 +114,11 @@ for dir in scripts/gate/tests tests; do
     if [ "$test_rc" -eq 0 ]; then
       ok "node --test $dir  $summary"
     else
-      fail "node --test $dir  $summary"; printf '%s\n' "$output" | grep -E '^✖' | head -20 | sed 's/^/      /'
+      fail "node --test $dir  $summary"
+      # Test failures must be visible in CI. The test runner's diagnostic is often indented (and can include a
+      # multiline assertion diff), so filtering only lines that start with the ✖ glyph hid the actual cause.
+      # validate.sh supplies placeholders for every secure parameter it reads; nevertheless tests must not print secrets.
+      printf '%s\n' "$output" | sed 's/^/      /'
     fi
   fi
 done
