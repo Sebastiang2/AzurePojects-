@@ -9,6 +9,14 @@ The four deployments are deliberately separate:
 
 No deployment creates secrets or changes DNS. The value of `studio-api-key` must equal `STUDIO_API_KEY` on `https://invi-studio-api.onrender.com`; verify equality without printing either value.
 
+## First-deployment access policy
+
+Deployment A leaves `publicNetworkAccess` enabled so the App Service front end can later perform custom-domain and managed-certificate operations, but it configures an empty main-site rule list with a default action of `Deny`. The default `*.azurewebsites.net` hostname and any later custom hostname therefore cannot serve Studio traffic initially.
+
+SCM is intentionally separate (`scmIpSecurityRestrictionsUseMain=false`) and currently has a default action of `Allow`. GitHub-hosted runners do not have stable egress ranges to allow-list. SCM is consequently still network-reachable, but FTP and SCM Basic publishing credentials are disabled; a deployment must authenticate through the narrowly scoped GitHub OIDC identity and Website Contributor role created in deployment B. OIDC is not an IP restriction. A narrower SCM policy needs a separate review before it can replace this temporary compatibility setting.
+
+Custom-domain binding remains an ARM operation after the ownership TXT proof exists. Managed TLS remains deployment D: with the main application blocked, issuance still requires a public direct CNAME to the App Service default hostname and the App Service managed-certificate prerequisites. Microsoft documents that managed certificates can be issued with application access blocked; validate successful issuance from the Azure control plane before treating that behavior as operationally proven here. Do not create the TXT/CNAME, binding or certificate before the Studio backend and code are approved for production.
+
 ## Code prerequisite
 
 Do not publish Studio `main` as it stands. An updated feature branch must carry forward the useful parts of PR #1:

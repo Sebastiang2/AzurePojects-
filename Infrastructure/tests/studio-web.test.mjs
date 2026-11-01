@@ -11,6 +11,7 @@ const rbacParams = read("environments/prod.studio-web.rbac-owner.bicepparam");
 const domainParams = read("environments/prod.studio-web.domain-studio-invi-lol.bicepparam");
 const tlsParams = read("environments/prod.studio-web.domain-studio-invi-lol-tls.bicepparam");
 const manifest = JSON.parse(read("safety/manifest.json"));
+const workflow = readFileSync(new URL("../../.github/workflows/iac-validate.yml", import.meta.url), "utf8");
 
 test("Studio uses the existing production plan with Node 22 and the secure launcher", () => {
   assert.match(app, /var appServicePlanName = 'asp-\$\{workloadName\}-\$\{environment\}-\$\{instance\}'/);
@@ -20,7 +21,17 @@ test("Studio uses the existing production plan with Node 22 and the secure launc
   assert.match(params, /^param appCommandLine = 'node launch\.mjs'$/m);
   assert.match(app, /httpsOnly: true/);
   assert.match(app, /SCM_DO_BUILD_DURING_DEPLOYMENT: 'false'/);
-  assert.match(app, /allow: false/g);
+  assert.match(app, /resource studioFtpPolicy 'Microsoft\.Web\/sites\/basicPublishingCredentialsPolicies@[^']+'[\s\S]*?name: 'ftp'[\s\S]*?allow: false/);
+  assert.match(app, /resource studioScmPolicy 'Microsoft\.Web\/sites\/basicPublishingCredentialsPolicies@[^']+'[\s\S]*?name: 'scm'[\s\S]*?allow: false/);
+});
+
+test("first Studio deployment denies all main-site ingress while SCM remains a separate authenticated surface", () => {
+  assert.match(app, /publicNetworkAccess: 'Enabled'/);
+  assert.match(app, /ipSecurityRestrictions: \[\]\s*ipSecurityRestrictionsDefaultAction: 'Deny'/);
+  assert.doesNotMatch(app, /ipSecurityRestrictionsDefaultAction: 'Allow'/);
+  assert.match(app, /scmIpSecurityRestrictionsUseMain: false/);
+  assert.match(app, /scmIpSecurityRestrictionsDefaultAction: 'Allow'/);
+  assert.match(app, /Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments/);
 });
 
 test("production URLs, Render API and origin settings are explicit", () => {
@@ -87,4 +98,11 @@ test("Studio deployments cannot touch existing production applications or data r
 test("the new app does not block unrelated deploys before it exists", () => {
   assert.equal(manifest.apps["app-invi-studio-prod-001"].introducedBy, "studio-web-a");
   assert.match(read("scripts/deploy.sh"), /gate\/apps-to-verify\.mjs/);
+});
+
+test("pull requests run only offline Bicep validation", () => {
+  assert.match(workflow, /^\s*pull_request:/m);
+  assert.match(workflow, /^\s*contents: read$/m);
+  assert.match(workflow, /bash Infrastructure\/scripts\/validate\.sh/);
+  assert.doesNotMatch(workflow, /azure\/login|az\s+deployment|deploy\.sh/i);
 });

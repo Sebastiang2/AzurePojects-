@@ -140,7 +140,15 @@ resource studio 'Microsoft.Web/sites@2024-11-01' = {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       scmMinTlsVersion: '1.2'
-      ipSecurityRestrictionsDefaultAction: 'Allow'
+      // The first deployment creates a public Azure hostname, but no client may reach the main site until a
+      // separately reviewed ingress policy is introduced. publicNetworkAccess remains enabled because App Service
+      // still needs its public front end for custom-domain binding and managed-certificate validation.
+      ipSecurityRestrictions: []
+      ipSecurityRestrictionsDefaultAction: 'Deny'
+
+      // SCM is deliberately a distinct policy: GitHub-hosted runners have no stable egress ranges. Its surface remains
+      // network-reachable, so Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments.
+      // OIDC is an identity control, not an IP allow rule; review a narrower SCM policy before relying on this long term.
       scmIpSecurityRestrictionsDefaultAction: 'Allow'
       scmIpSecurityRestrictionsUseMain: false
     }
