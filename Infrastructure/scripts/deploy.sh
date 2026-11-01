@@ -4,7 +4,8 @@
 #   Infrastructure/scripts/deploy.sh --deployment <key> [--dry-run] [--allow-non-main]
 #
 #   --deployment  key in Infrastructure/safety/manifest.json: main, adminapp-a, adminapp-b-rbac, adminapp-c-domain,
-#                 studioapi-a, studioapi-b-rbac,
+#                 studioapi-a, studioapi-b-rbac, studio-web-a, studio-web-b-rbac, studio-web-c-domain,
+#                 studio-web-d-domain-tls,
 #                 swa-web, swa-domain-app-cetchapp-com, swa-domain-invi-lol, swa-domain-www-invi-lol
 #   --dry-run     rehearsal: runs every check and the gate, prints what would be deployed and every reason a real run would
 #                 stop, and NEVER deploys (it also needs no terminal and tolerates a dirty tree and missing secure parameters,
@@ -30,7 +31,22 @@ export MSYS_NO_PATHCONV=1
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 MANIFEST="$REPO_ROOT/Infrastructure/safety/manifest.json"
-to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+to_native() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+to_az_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  elif command -v wslpath >/dev/null 2>&1; then
+    wslpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
 # git.exe and node.exe are native Windows programs: with MSYS_NO_PATHCONV=1 an MSYS path (/c/Users/...) is passed through
 # unchanged and they cannot open it. Every path that goes to a native program is converted first.
 REPO_ROOT_N="$(to_native "$REPO_ROOT")"
@@ -197,7 +213,7 @@ echo
 echo "Full report: $WORK/report.md"
 
 DEPLOY_CMD=(az deployment group create --name "$DEPLOYMENT_NAME" --resource-group "$RG" --subscription "$SUB"
-            --parameters "$(to_native "$REPO_ROOT/$PARAMETERS")" --mode Incremental --only-show-errors --output none)
+            --parameters "$(to_az_path "$REPO_ROOT/$PARAMETERS")" --mode Incremental --only-show-errors --output none)
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo
@@ -268,7 +284,13 @@ elif [ "$WARMUP_MODE" = "false" ]; then
   }
 fi
 
-for app in $(node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); console.log(Object.keys(m.apps??{}).join(" "))' "$MANIFEST_N"); do
+if EXISTING_SITES="$(az resource list --resource-group "$RG" --subscription "$SUB" --resource-type Microsoft.Web/sites --query "[].name" --output tsv --only-show-errors 2>/dev/null)"; then
+  EXISTING_SITES="$(printf '%s\n' "$EXISTING_SITES" | tr '\n' ' ')"
+else
+  EXISTING_SITES="*"
+fi
+
+for app in $(node "$(to_native "$HERE/gate/apps-to-verify.mjs")" "$MANIFEST_N" "$DEPLOYMENT" $EXISTING_SITES); do
   state="$(az webapp show --resource-group "$RG" --name "$app" --subscription "$SUB" --query state --output tsv --only-show-errors 2>/dev/null || echo unknown)"
   echo "App $app: $state"
   [ "$state" = "Running" ] || { echo "ERROR: $app is not running." >&2; exit 1; }
