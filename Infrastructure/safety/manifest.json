@@ -60,11 +60,11 @@
         "PlaceSuggestions__Enabled"
       ],
       "mustEqual": {
-        "WebDrafts__Enabled": "false",
+        "WebDrafts__Enabled": "true",
         "WebDrafts__RequireCaptcha": "true",
-        "WebDrafts__TrustCloudflareConnectingIp": "false",
-        "WebDrafts__PlaceSuggestionsPaused": "true",
-        "PlaceSuggestions__Enabled": "false"
+        "WebDrafts__TrustCloudflareConnectingIp": "true",
+        "WebDrafts__PlaceSuggestionsPaused": "false",
+        "PlaceSuggestions__Enabled": "true"
       },
       "secureFeeds": {
         "RevenueCat__SecretApiKey": "REVENUECAT_SECRET_API_KEY",

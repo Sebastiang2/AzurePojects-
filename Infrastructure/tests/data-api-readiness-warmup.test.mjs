@@ -4,16 +4,16 @@ import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("canonical production preserves the active dedicated warm-up while Health Check stays off", () => {
+test("canonical production preserves active customer protections, warm-up, and independent Health Check", () => {
   const parameters = read("environments/prod.bicepparam");
   const main = read("main.bicep");
   const module = read("modules/appservice.bicep");
   assert.match(parameters, /^param dataApiReadinessWarmupEnabled = true$/m);
   assert.match(parameters, /^param dataApiHealthCheckEnabled = false$/m);
-  for (const disabled of ["webDraftsEnabled", "webDraftsTrustCloudflareConnectingIp", "dataApiCloudflareOriginLockEnabled", "placeSuggestionsEnabled"]) {
-    assert.match(parameters, new RegExp(`^param ${disabled} = false$`, "m"));
+  for (const enabled of ["webDraftsEnabled", "webDraftsRequireCaptcha", "webDraftsTrustCloudflareConnectingIp", "dataApiCloudflareOriginLockEnabled", "placeSuggestionsEnabled"]) {
+    assert.match(parameters, new RegExp(`^param ${enabled} = true$`, "m"));
   }
-  assert.match(parameters, /^param webDraftsPlaceSuggestionsPaused = true$/m);
+  assert.match(parameters, /^param webDraftsPlaceSuggestionsPaused = false$/m, "the emergency brake remains available but is not active");
   for (const source of [main, module]) {
     assert.match(source, /^param dataApiReadinessWarmupEnabled bool = false$/m);
     assert.match(source, /^param dataApiHealthCheckEnabled bool = false$/m);
