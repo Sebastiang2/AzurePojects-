@@ -102,6 +102,33 @@
       "secureFeeds": {
         "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET": "ADMIN_ENTRA_CLIENT_SECRET"
       }
+    },
+    "app-invi-studio-prod-001": {
+      "required": [
+        "NODE_ENV",
+        "STUDIO_ENVIRONMENT",
+        "HOSTNAME",
+        "NEXT_TELEMETRY_DISABLED",
+        "SCM_DO_BUILD_DURING_DEPLOYMENT",
+        "ONBOARDING_API_BASE_URL",
+        "STUDIO_PUBLIC_URL",
+        "STUDIO_PUBLIC_ORIGIN",
+        "STUDIO_REQUIRE_EMAIL",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
+      ],
+      "mustEqual": {
+        "NODE_ENV": "production",
+        "STUDIO_ENVIRONMENT": "production",
+        "HOSTNAME": "0.0.0.0",
+        "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
+        "ONBOARDING_API_BASE_URL": "https://invi-studio-api.onrender.com",
+        "STUDIO_PUBLIC_URL": "https://studio.invi.lol",
+        "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
+        "STUDIO_REQUIRE_EMAIL": "false",
+        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
+      },
+      "introducedBy": "studio-web-a"
     }
   },
   "noise": [
@@ -468,7 +495,13 @@
           "status": "active"
         }
       },
-      "id-gha-invi-studio-api-prod-001": {}
+      "id-gha-invi-studio-api-prod-001": {},
+      "id-gha-invi-studio-prod-001": {
+        "github-production": {
+          "subject": "repo:CetchApp/invi-studio:environment:production",
+          "status": "declared"
+        }
+      }
     }
   },
   "residualRisks": [
@@ -841,6 +874,178 @@
       "allowedChanges": [],
       "residualRisks": [],
       "touches": []
+    },
+    "studio-web-a": {
+      "description": "Invi Studio web (Next.js on Node 22) with Application Insights, settings, diagnostics and GitHub deploy identity. Contributor is enough; no role assignment, DNS or TLS change",
+      "template": "Infrastructure/modules/studio-web.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.bicepparam",
+      "deploymentName": "invi-prod-studio-web-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001",
+          "why": "first deployment of the Studio web app"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001",
+          "why": "first deployment of the Studio web app on the existing plan"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings",
+          "why": "first deployment of the Studio web app"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*",
+          "why": "first deployment of the Studio web app; FTP and SCM basic authentication off"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001",
+          "why": "first deployment of the Studio web app"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001",
+          "why": "GitHub OIDC deploy identity; no role until studio-web-b-rbac"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production",
+          "why": "trusts only the production environment in CetchApp/invi-studio"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [
+        {
+          "id": "R-STUDIO-CODE-PREREQUISITE",
+          "text": "The site must receive a standalone package containing launch.mjs, key-vault-secrets.mjs and server.js. Current Studio main does not contain those files; merge an updated replacement for PR #1 before code deployment. The production billing gate must remain fail-closed."
+        },
+        {
+          "id": "R-STUDIO-KEY-PAIR",
+          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both mapped secrets must exist before code deployment."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
+        }
+      ]
+    },
+    "studio-web-b-rbac": {
+      "description": "Per-secret Key Vault access for Studio and Website Contributor on only the Studio site for its GitHub identity. Needs Owner or RBAC Administrator and runs after studio-web-a",
+      "template": "Infrastructure/modules/studio-web-rbac.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.rbac-owner.bicepparam",
+      "deploymentName": "invi-prod-studio-web-rbac-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [
+        {
+          "module": "secretAccess",
+          "why": "role assignments named with guid() on the Studio system identity, one per secret; verified against live RBAC",
+          "count": 2
+        }
+      ],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": []
+    },
+    "studio-web-c-domain": {
+      "description": "Bind studio.invi.lol to the existing Studio app without TLS, after DNS ownership validation",
+      "template": "Infrastructure/modules/studio-web-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.domain-studio-invi-lol.bicepparam",
+      "deploymentName": "invi-prod-studio-web-domain-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol",
+          "why": "first Studio custom-domain binding after DNS validation"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol"
+        }
+      ]
+    },
+    "studio-web-d-domain-tls": {
+      "description": "Managed certificate and SNI binding for studio.invi.lol, after the hostname is bound and public DNS validates",
+      "template": "Infrastructure/modules/studio-web-domain.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.domain-studio-invi-lol-tls.bicepparam",
+      "deploymentName": "invi-prod-studio-web-domain-tls-001",
+      "secureEnvironment": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Web/certificates",
+          "name": "studio.invi.lol-app-invi-studio-prod-001",
+          "why": "managed certificate for the reviewed Studio hostname"
+        }
+      ],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol",
+          "paths": [
+            "properties.sslState",
+            "properties.thumbprint"
+          ],
+          "why": "enable SNI with the managed certificate after the hostname-only deployment"
+        }
+      ],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Web/certificates",
+          "name": "studio.invi.lol-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "name": "app-invi-studio-prod-001/studio.invi.lol"
+        }
+      ]
     },
     "swa-web": {
       "description": "Static Web App swa-invi-web-prod-001 (no custom domains)",

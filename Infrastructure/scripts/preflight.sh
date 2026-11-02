@@ -31,7 +31,22 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 GATE="$HERE/gate"
 MANIFEST="$REPO_ROOT/Infrastructure/safety/manifest.json"
 
-to_native() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+to_native() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+to_az_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  elif command -v wslpath >/dev/null 2>&1; then
+    wslpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
 
 DEPLOYMENT=""
 WORK=""
@@ -112,9 +127,9 @@ if [ -n "$ACCOUNT_SUB" ] && az group show -n "$RG" --subscription "$SUB" --only-
 
 # ---- 2. compile --------------------------------------------------------------------------------------------------------
 echo "-- compile"
-(cd "$REPO_ROOT/Infrastructure" && az bicep build --file "$(to_native "$REPO_ROOT/$TEMPLATE")" --stdout >/dev/null 2>"$WORK/compile.err"); step compile "$?"
+(cd "$REPO_ROOT/Infrastructure" && az bicep build --file "$(to_az_path "$REPO_ROOT/$TEMPLATE")" --stdout >/dev/null 2>"$WORK/compile.err"); step compile "$?"
 # Lint passes only if the command itself succeeded (exit 0: warnings are allowed, errors and crashes are not).
-(cd "$REPO_ROOT/Infrastructure" && az bicep lint --file "$(to_native "$REPO_ROOT/$TEMPLATE")" >"$WORK/lint.out" 2>&1); lint_rc=$?
+(cd "$REPO_ROOT/Infrastructure" && az bicep lint --file "$(to_az_path "$REPO_ROOT/$TEMPLATE")" >"$WORK/lint.out" 2>&1); lint_rc=$?
 lint_errors="$(grep -c ' : Error ' "$WORK/lint.out" || true)"
 if [ "$lint_rc" -ne 0 ] || [ "${lint_errors:-0}" -gt 0 ]; then
   step lint 1
@@ -123,7 +138,7 @@ if [ "$lint_rc" -ne 0 ] || [ "${lint_errors:-0}" -gt 0 ]; then
 else
   step lint 0
 fi
-(cd "$REPO_ROOT/Infrastructure" && az bicep build-params --file "$(to_native "$REPO_ROOT/$PARAMETERS")" --stdout >/dev/null 2>"$WORK/params.err"); step params "$?"
+(cd "$REPO_ROOT/Infrastructure" && az bicep build-params --file "$(to_az_path "$REPO_ROOT/$PARAMETERS")" --stdout >/dev/null 2>"$WORK/params.err"); step params "$?"
 
 # ---- 3. offline evaluation ---------------------------------------------------------------------------------------------
 echo "-- evaluate (placeholders for secure parameters)"
@@ -151,7 +166,7 @@ evaluate_snapshot() {
   [ -n "$bicep_bin" ] || { echo "neither az bicep snapshot nor the Bicep CLI is available" >&2; return 2; }
   "$bicep_bin" snapshot "$1" --resource-group "$RG" --subscription-id "$SUB" --location "$LOCATION"
 }
-if (cd "$WORK/eval" && evaluate_snapshot "$(to_native "$PARAM_EVAL")" >/dev/null 2>"$WORK/snapshot.err"); then
+if (cd "$WORK/eval" && evaluate_snapshot "$(to_az_path "$PARAM_EVAL")" >/dev/null 2>"$WORK/snapshot.err"); then
   mv "${PARAM_EVAL%.bicepparam}.snapshot.json" "$WORK/snapshot.json" && step snapshot 0 || step snapshot 1
 else
   step snapshot 1
@@ -159,7 +174,7 @@ fi
 
 # ---- 4. what-if (real template, placeholders; reduced in-pipe, never stored raw) ----------------------------------------
 echo "-- what-if"
-az deployment group what-if --resource-group "$RG" --subscription "$SUB" --parameters "$(to_native "$REPO_ROOT/$PARAMETERS")" \
+az deployment group what-if --resource-group "$RG" --subscription "$SUB" --parameters "$(to_az_path "$REPO_ROOT/$PARAMETERS")" \
   --no-pretty-print -o json --only-show-errors 2>"$WORK/whatif.err" \
   | node "$(to_native "$GATE/summarize-whatif.mjs")" "$WORK_N/whatif.json" 2>>"$WORK/whatif.err"
 wi=("${PIPESTATUS[@]}")

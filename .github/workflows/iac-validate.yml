@@ -1,0 +1,23 @@
+name: Validate Bicep code (offline)
+
+on:
+  pull_request:
+    paths:
+      - 'Infrastructure/**'
+      - 'docs/**'
+      - '.github/workflows/iac-validate.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Bicep and safety invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: az version --output none
+      - run: bash Infrastructure/scripts/validate.sh
