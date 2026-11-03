@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -27,8 +30,11 @@ test("Studio uses the existing production plan with Node 22 and the secure launc
 
 test("first Studio deployment denies all main-site ingress while SCM remains a separate authenticated surface", () => {
   assert.match(app, /publicNetworkAccess: 'Enabled'/);
-  assert.match(app, /ipSecurityRestrictions: \[\]\s*ipSecurityRestrictionsDefaultAction: 'Deny'/);
+  // Closed unless ingressMode says public; a value left out is closed too, and the only rule list ever rendered is empty.
+  assert.match(app, /param ingressMode string = 'closed'/);
+  assert.match(app, /ipSecurityRestrictions: \[\]\s*ipSecurityRestrictionsDefaultAction: ingressMode == 'public' \? 'Allow' : 'Deny'/);
   assert.doesNotMatch(app, /ipSecurityRestrictionsDefaultAction: 'Allow'/);
+  assert.match(params, /^param ingressMode = 'closed'$/m);
   assert.match(app, /scmIpSecurityRestrictionsUseMain: false/);
   assert.match(app, /scmIpSecurityRestrictionsDefaultAction: 'Allow'/);
   assert.match(app, /Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments/);
@@ -82,7 +88,7 @@ test("domain binding and TLS are separate reviewed deployments", () => {
 });
 
 test("Studio deployments cannot touch existing production applications or data resources", () => {
-  const keys = ["studio-web-a", "studio-web-b-rbac", "studio-web-c-domain", "studio-web-d-domain-tls"];
+  const keys = ["studio-web-a", "studio-web-b-rbac", "studio-web-c-domain", "studio-web-d-domain-tls", "studio-web-e-ingress-public", "studio-web-e-ingress-close"];
   const forbidden = /data-api|auth-api|admin|mysql|Microsoft\.KeyVault\/vaults$|studio-api/;
   for (const key of keys) {
     const deployment = manifest.deployments[key];
@@ -105,4 +111,115 @@ test("pull requests run only offline Bicep validation", () => {
   assert.match(workflow, /^\s*contents: read$/m);
   assert.match(workflow, /bash Infrastructure\/scripts\/validate\.sh/);
   assert.doesNotMatch(workflow, /azure\/login|az\s+deployment|deploy\.sh/i);
+});
+
+// ---- the reviewed ingress step (deployment E) ---------------------------------------------------------------------------------
+
+const publicParams = read("environments/prod.studio-web.ingress-public.bicepparam");
+const withoutComments = (text) => text.split(/\r?\n/).filter((line) => line.trim() && !line.trim().startsWith("//")).join("\n");
+
+test("the public ingress file is deployment A with ingressMode changed and nothing else", () => {
+  assert.match(publicParams, /^using '\.\.\/modules\/studio-web\.bicep'$/m);
+  assert.match(publicParams, /^param ingressMode = 'public'$/m);
+  const strip = (text) => withoutComments(text).replace(/^param ingressMode = '[a-z]+'$/m, "param ingressMode = <mode>");
+  assert.equal(strip(publicParams), strip(params), "the two parameter files must stay identical apart from ingressMode");
+});
+
+test("the ingress deployments are Studio-only, change one property and have a rollback", () => {
+  const pub = manifest.deployments["studio-web-e-ingress-public"];
+  const close = manifest.deployments["studio-web-e-ingress-close"];
+  const a = manifest.deployments["studio-web-a"];
+  for (const deployment of [pub, close]) {
+    assert.equal(deployment.template, a.template);
+    assert.deepEqual(deployment.touches, a.touches, "the same resources as deployment A, no others");
+    assert.deepEqual([deployment.allowedCreates, deployment.allowedUnsupported], [[], []]);
+    assert.deepEqual([deployment.allowedNewSettings, deployment.allowedRemovedSettings], [{}, {}]);
+    assert.equal(deployment.allowedChanges.length, 2);
+    for (const change of deployment.allowedChanges) assert.match(change.resource, /^app-invi-studio-prod-001$/);
+    const [live, whatif] = deployment.allowedChanges;
+    assert.equal(live.property, "siteConfig.ipSecurityRestrictionsDefaultAction");
+    assert.deepEqual([whatif.whatif, whatif.type, whatif.property], [true, "Microsoft.Web/sites", "properties.siteConfig.ipSecurityRestrictionsDefaultAction"]);
+  }
+  assert.equal(pub.parameters, "Infrastructure/environments/prod.studio-web.ingress-public.bicepparam");
+  assert.deepEqual([pub.allowedChanges[0].before, pub.allowedChanges[0].after], ["Deny", "Allow"]);
+  assert.equal(close.parameters, a.parameters, "the rollback is the closed file of deployment A");
+  assert.deepEqual([close.allowedChanges[0].before, close.allowedChanges[0].after], ["Allow", "Deny"]);
+  assert.notEqual(pub.deploymentName, close.deploymentName);
+});
+
+// The templates are evaluated offline (`az bicep snapshot`: no deployment, no Azure call), like mysql-server-mode.test.mjs. Skipped
+// when the Azure CLI or Bicep is not installed.
+const haveBicep = spawnSync("az", ["bicep", "version"], { shell: process.platform === "win32", encoding: "utf8" }).status === 0;
+
+function render(files) {
+  const dir = mkdtempSync(join(tmpdir(), "studio-web-ingress-"));
+  try {
+    mkdirSync(join(dir, "modules"));
+    mkdirSync(join(dir, "environments"));
+    cpSync(new URL("../modules/studio-web.bicep", import.meta.url), join(dir, "modules", "studio-web.bicep"));
+    const results = {};
+    for (const [name, text] of Object.entries(files)) {
+      const file = join(dir, "environments", `${name}.bicepparam`);
+      writeFileSync(file, text);
+      const run = spawnSync(
+        "az",
+        ["bicep", "snapshot", "--file", file, "--subscription-id", "00000000-0000-0000-0000-000000000000", "--resource-group", "rg-test", "--location", "swedencentral", "--only-show-errors"],
+        { shell: process.platform === "win32", encoding: "utf8" },
+      );
+      results[name] = run.status === 0
+        ? { ok: true, resources: JSON.parse(readFileSync(file.replace(/\.bicepparam$/, ".snapshot.json"), "utf8")).predictedResources }
+        : { ok: false, error: `${run.stdout}${run.stderr}` };
+    }
+    return results;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Every leaf of every predicted resource as "type | name | path" -> value. */
+function leaves(resources) {
+  const out = new Map();
+  const walk = (prefix, value) => {
+    if (value !== null && typeof value === "object") {
+      if (Array.isArray(value) && value.length === 0) out.set(prefix, "[]");
+      for (const [key, child] of Object.entries(value)) walk(`${prefix}.${key}`, child);
+    } else out.set(prefix, value);
+  };
+  for (const resource of resources) walk(`${resource.type} | ${resource.name}`, resource);
+  return out;
+}
+
+test("rendered: the public file differs from deployment A in exactly one property, and a missing value is closed", { skip: !haveBicep }, () => {
+  const mode = (text) => text.replace(/^param ingressMode = '[a-z]+'\r?\n/m, "");
+  const rendered = render({
+    closed: params,
+    public: publicParams,
+    left_out: mode(params),
+    unknown: params.replace("param ingressMode = 'closed'", "param ingressMode = 'allowlist'"),
+  });
+  assert.ok(rendered.closed.ok && rendered.public.ok && rendered.left_out.ok, JSON.stringify(Object.values(rendered).map((r) => r.error ?? "ok")));
+
+  const closed = leaves(rendered.closed.resources);
+  const open = leaves(rendered.public.resources);
+  const differences = [...new Set([...closed.keys(), ...open.keys()])].filter((key) => closed.get(key) !== open.get(key));
+  assert.deepEqual(differences, ["Microsoft.Web/sites | app-invi-studio-prod-001.properties.siteConfig.ipSecurityRestrictionsDefaultAction"]);
+  const key = differences[0];
+  assert.deepEqual([closed.get(key), open.get(key)], ["Deny", "Allow"]);
+
+  // No access rule in either state, SCM keeps its own policy, and nothing but this one site is declared with a rule or default action.
+  for (const state of [closed, open]) {
+    assert.equal(state.get("Microsoft.Web/sites | app-invi-studio-prod-001.properties.siteConfig.ipSecurityRestrictions"), "[]");
+    assert.equal(state.get("Microsoft.Web/sites | app-invi-studio-prod-001.properties.siteConfig.scmIpSecurityRestrictionsDefaultAction"), "Allow");
+    assert.equal(state.get("Microsoft.Web/sites | app-invi-studio-prod-001.properties.siteConfig.scmIpSecurityRestrictionsUseMain"), false);
+    assert.equal([...state.keys()].filter((name) => /ipSecurityRestrictionsDefaultAction$/i.test(name) && !/scm/i.test(name)).length, 1);
+  }
+  assert.deepEqual(
+    rendered.public.resources.map((resource) => resource.type).sort(),
+    rendered.closed.resources.map((resource) => resource.type).sort(),
+    "the same resources, no more and no fewer",
+  );
+
+  // A parameter left out fails closed, and a value that is not closed or public does not compile.
+  assert.equal(leaves(rendered.left_out.resources).get(key), "Deny");
+  assert.equal(rendered.unknown.ok, false, "ingressMode only accepts closed or public");
 });
