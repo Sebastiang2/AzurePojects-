@@ -6,6 +6,10 @@ param environment = 'prod'
 param instance = '001'
 param location = 'swedencentral'
 
+// closed: the main site refuses every request. This is also the rollback of prod.studio-web.ingress-public.bicepparam, which
+// is this file with 'public'. Keep the two files identical apart from this line (a test compares them).
+param ingressMode = 'closed'
+
 param tags = {
   environment: 'prod'
   application: 'invi-studio'

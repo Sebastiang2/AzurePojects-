@@ -1059,6 +1059,127 @@
         }
       ]
     },
+    "studio-web-e-ingress-public": {
+      "description": "Open the main site of the Studio web app to everybody (default action Deny to Allow), after the app is verified and the certificate is issued. Same template as studio-web-a; the what-if shows this one property. Contributor is enough; no role assignment, DNS or TLS change",
+      "template": "Infrastructure/modules/studio-web.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.ingress-public.bicepparam",
+      "deploymentName": "invi-prod-studio-web-ingress-public-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "siteConfig.ipSecurityRestrictionsDefaultAction",
+          "before": "Deny",
+          "after": "Allow",
+          "why": "reviewed public launch of studio.invi.lol: the main site of this app only; SCM, the plan and every other site keep their rules"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites",
+          "resource": "app-invi-studio-prod-001",
+          "property": "properties.siteConfig.ipSecurityRestrictionsDefaultAction",
+          "why": "reviewed public launch of studio.invi.lol: the main site of this app only; SCM, the plan and every other site keep their rules"
+        }
+      ],
+      "residualRisks": [
+        {
+          "id": "R-STUDIO-PUBLIC-INGRESS",
+          "text": "Applying this publishes Studio to the internet. Verify first from inside the app (Kudu SSH: /api/health and /api/health?deep=1 on localhost) and read the what-if: it must show only siteConfig.ipSecurityRestrictionsDefaultAction. The controls that carry an open site are HTTPS only with TLS 1.2, the same-origin check, the signed session cookie, the sign-in rate limit, the Studio key on every call to the onboarding API and fail-closed billing. Roll back with studio-web-e-ingress-close."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
+        }
+      ]
+    },
+    "studio-web-e-ingress-close": {
+      "description": "Close the main site of the Studio web app again (default action Allow to Deny): the rollback of studio-web-e-ingress-public. The parameter file is the one of studio-web-a",
+      "template": "Infrastructure/modules/studio-web.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.bicepparam",
+      "deploymentName": "invi-prod-studio-web-ingress-close-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "siteConfig.ipSecurityRestrictionsDefaultAction",
+          "before": "Allow",
+          "after": "Deny",
+          "why": "rollback of the public launch: the main site of this app refuses every request again; SCM, the plan and every other site are not touched"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites",
+          "resource": "app-invi-studio-prod-001",
+          "property": "properties.siteConfig.ipSecurityRestrictionsDefaultAction",
+          "why": "rollback of the public launch: the main site of this app refuses every request again; SCM, the plan and every other site are not touched"
+        }
+      ],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
+        }
+      ]
+    },
     "swa-web": {
       "description": "Static Web App swa-invi-web-prod-001 (no custom domains)",
       "template": "Infrastructure/modules/staticwebapp.bicep",
