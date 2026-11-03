@@ -1026,13 +1026,25 @@
       "allowedRemovedSettings": {},
       "allowedChanges": [
         {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "sslState",
+          "before": "Disabled",
+          "after": "SniEnabled",
+          "why": "enable SNI with the managed certificate after the hostname-only deployment studio-web-c-domain; the offline binding check reads this entry"
+        },
+        {
+          "whatif": true,
           "type": "Microsoft.Web/sites/hostNameBindings",
-          "name": "app-invi-studio-prod-001/studio.invi.lol",
-          "paths": [
-            "properties.sslState",
-            "properties.thumbprint"
-          ],
-          "why": "enable SNI with the managed certificate after the hostname-only deployment"
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.sslState",
+          "why": "the same SNI switch as seen by what-if (Disabled to SniEnabled)"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.thumbprint",
+          "why": "the binding takes the thumbprint of the managed certificate that this deployment creates"
         }
       ],
       "residualRisks": [],
