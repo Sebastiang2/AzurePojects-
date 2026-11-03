@@ -63,8 +63,8 @@ Every writing step goes through its own approval; nothing below is approved by b
 | 8 | DNS at Namecheap, see below | Whoever holds the Namecheap account | `Resolve-DnsName` shows the TXT and the CNAME |
 | 9 | `studio-web-c-domain` | Backend owner | The hostname is bound without TLS |
 | 10 | `studio-web-d-domain-tls` | Backend owner | The certificate is issued and bound. If Azure refuses it, apply step 11 first and repeat this one |
-| 11 | `studio-web-e-ingress-public` (see "Opening the main site") | Decision, then backend owner | `https://studio.invi.lol/api/health` and `?deep=1` are 200 from outside. Rollback: `studio-web-e-ingress-close` |
-| 12 | Later and separate: any lock-down of the shared onboarding API | Decided in the onboarding repository | Not a precondition of the Studio launch. It must not be switched on before every caller of that API sends the Studio key |
+| 11 | Review and activate access control for the onboarding API's administrative and approval routes in stages, with the API owner; verify unauthorized access is denied and the existing admin app still works. Only then run `studio-web-e-ingress-public` (see "Opening the main site") | API owner, security reviewer, launch decision, then backend owner | Stop if the access-control change is unreviewed, not active, or breaks the admin app. After opening, `https://studio.invi.lol/api/health` and `?deep=1` are 200 from outside. Rollback: `studio-web-e-ingress-close` |
+| 12 | Later and separate: any broad lock-down of the shared onboarding API beyond the administrative and approval route access control required in step 11 | Decided in the onboarding repository | Must not be switched on before every caller of that API sends the Studio key |
 
 The database track has its own approvals and does not hold up the launch of Studio itself: a read-only preflight (`Migrations/preflight-readonly.sql` in the onboarding repository), a backup point, `20261018_01_studio_billing_exemption.sql`, then the exemptions the product owner approves. Until the migration exists, `GET /api/studio/billing/exemption` answers a generic 503 and nobody can publish paid content (closed, never free).
 
