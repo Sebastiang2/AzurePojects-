@@ -45,6 +45,13 @@ param githubRepository string
 @description('GitHub environment named in the federated credential')
 param githubEnvironment string = 'production'
 
+@description('Who may reach the main site. closed (default, deployment A): the App Service front end refuses every request (default action Deny, no rule). public: everybody (default action Allow, no rule), a separately reviewed step after the app is verified and the certificate is issued. SCM has its own policy and is not affected')
+@allowed([
+  'closed'
+  'public'
+])
+param ingressMode string = 'closed'
+
 var appServicePlanName = 'asp-${workloadName}-${environment}-${instance}'
 var keyVaultName = 'kv-${workloadName}-${environment}-${instance}'
 var logAnalyticsName = 'log-${workloadName}-${environment}-${instance}'
@@ -143,8 +150,11 @@ resource studio 'Microsoft.Web/sites@2024-11-01' = {
       // The first deployment creates a public Azure hostname, but no client may reach the main site until a
       // separately reviewed ingress policy is introduced. publicNetworkAccess remains enabled because App Service
       // still needs its public front end for custom-domain binding and managed-certificate validation.
+      // That policy is ingressMode = 'public' in its own parameter file, one property apart from deployment A (the
+      // default action). Only the main site of this app: no other site, the plan and the SCM site are not touched,
+      // and 'closed' (the default, also for any value left out) is the rollback.
       ipSecurityRestrictions: []
-      ipSecurityRestrictionsDefaultAction: 'Deny'
+      ipSecurityRestrictionsDefaultAction: ingressMode == 'public' ? 'Allow' : 'Deny'
 
       // SCM is deliberately a distinct policy: GitHub-hosted runners have no stable egress ranges. Its surface remains
       // network-reachable, so Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments.

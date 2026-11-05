@@ -6,6 +6,10 @@ param environment = 'prod'
 param instance = '001'
 param location = 'swedencentral'
 
+// closed: the main site refuses every request. This is also the rollback of prod.studio-web.ingress-public.bicepparam, which
+// is this file with 'public'. Keep the two files identical apart from this line (a test compares them).
+param ingressMode = 'closed'
+
 param tags = {
   environment: 'prod'
   application: 'invi-studio'
@@ -38,6 +42,18 @@ param settingSecretNames = [
   {
     setting: 'STUDIO_SESSION_SECRET'
     secretName: 'studio-session-secret'
+  }
+  // Optional: without them Studio starts and skips the Google lookup and the cAI texts (launch.mjs requires only the two
+  // above). openai-api-key is the existing vault secret the Studio API and the Data API already use; the Google key is
+  // Studio's own. No map token and no billing test-mode flag: Studio reads no map token, and test mode is ignored on every
+  // Azure site (docs/studio-web-rollout.md).
+  {
+    setting: 'GOOGLE_PLACES_API_KEY'
+    secretName: 'studio-google-places-api-key'
+  }
+  {
+    setting: 'OPENAI_API_KEY'
+    secretName: 'openai-api-key'
   }
 ]
 

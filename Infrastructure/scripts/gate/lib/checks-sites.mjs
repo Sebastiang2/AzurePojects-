@@ -22,6 +22,7 @@ const sameSettingValue = (a, b) => {
 //   siteConfig.<name> | httpsOnly | ...        a site property, with exact before/after          (compareValue)
 //   setting:<NAME>                             an app setting value, or literal -> keyvault-reference (checkAppSettings)
 //   ipSecurityRestrictions:<rule name>         an access rule that is added                       (checkAccessRules)
+//   sslState  (resource "<site>/<host>")       a bound hostname switching SNI on, exact before/after (checkHostBindings)
 //   whatif: true                               a what-if path (glob) of a resource type          (whatif.mjs)
 // Each entry carries a `why`; the approver reads it in the report.
 
@@ -401,7 +402,14 @@ export function checkHostBindings(ctx) {
     }
     const lp = current.properties ?? {};
     if (p.sslState !== undefined && lc(p.sslState) !== lc(lp.sslState)) {
-      findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${lp.sslState} to ${p.sslState}`);
+      // Enabling SNI on a bound hostname is the point of a TLS deployment (studio-web-d-domain-tls), so the manifest can approve exactly
+      // that transition for exactly this binding: { resource: "<site>/<host>", property: "sslState", before, after, why }.
+      const allowance = allowedChange(ctx.deployment, `${siteName}/${host}`, "sslState", lp.sslState, p.sslState);
+      if (allowance) {
+        findings.allowed("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState ${lp.sslState} -> ${p.sslState} (${allowance.why ?? "listed in manifest"})`);
+      } else {
+        findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${lp.sslState} to ${p.sslState}`);
+      }
     }
     if (p.hostNameType !== undefined && lc(p.hostNameType) !== lc(lp.hostNameType)) {
       findings.fail("BINDING-TYPE-CHANGE", `${siteName}/${host}`, `hostNameType would change from ${lp.hostNameType} to ${p.hostNameType}`);

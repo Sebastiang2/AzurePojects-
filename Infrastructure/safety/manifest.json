@@ -126,7 +126,7 @@
         "STUDIO_PUBLIC_URL": "https://studio.invi.lol",
         "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
         "STUDIO_REQUIRE_EMAIL": "false",
-        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
+        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET;studio-google-places-api-key:GOOGLE_PLACES_API_KEY;openai-api-key:OPENAI_API_KEY"
       },
       "introducedBy": "studio-web-a"
     }
@@ -929,7 +929,7 @@
         },
         {
           "id": "R-STUDIO-KEY-PAIR",
-          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both mapped secrets must exist before code deployment."
+          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both required secrets (studio-api-key, studio-session-secret) must exist before code deployment. All four mapped secrets must exist before studio-web-b-rbac, which scopes one role assignment to each; the two optional ones (studio-google-places-api-key, the shared openai-api-key) only switch features on."
         }
       ],
       "touches": [
@@ -974,7 +974,7 @@
         {
           "module": "secretAccess",
           "why": "role assignments named with guid() on the Studio system identity, one per secret; verified against live RBAC",
-          "count": 2
+          "count": 4
         }
       ],
       "allowedNewSettings": {},
@@ -1026,13 +1026,25 @@
       "allowedRemovedSettings": {},
       "allowedChanges": [
         {
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "sslState",
+          "before": "Disabled",
+          "after": "SniEnabled",
+          "why": "enable SNI with the managed certificate after the hostname-only deployment studio-web-c-domain; the offline binding check reads this entry"
+        },
+        {
+          "whatif": true,
           "type": "Microsoft.Web/sites/hostNameBindings",
-          "name": "app-invi-studio-prod-001/studio.invi.lol",
-          "paths": [
-            "properties.sslState",
-            "properties.thumbprint"
-          ],
-          "why": "enable SNI with the managed certificate after the hostname-only deployment"
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.sslState",
+          "why": "the same SNI switch as seen by what-if (Disabled to SniEnabled)"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites/hostNameBindings",
+          "resource": "app-invi-studio-prod-001/studio.invi.lol",
+          "property": "properties.thumbprint",
+          "why": "the binding takes the thumbprint of the managed certificate that this deployment creates"
         }
       ],
       "residualRisks": [],
@@ -1044,6 +1056,127 @@
         {
           "type": "Microsoft.Web/sites/hostNameBindings",
           "name": "app-invi-studio-prod-001/studio.invi.lol"
+        }
+      ]
+    },
+    "studio-web-e-ingress-public": {
+      "description": "Open the main site of the Studio web app to everybody (default action Deny to Allow), after the app is verified and the certificate is issued. Same template as studio-web-a; the what-if shows this one property. Contributor is enough; no role assignment, DNS or TLS change",
+      "template": "Infrastructure/modules/studio-web.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.ingress-public.bicepparam",
+      "deploymentName": "invi-prod-studio-web-ingress-public-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "siteConfig.ipSecurityRestrictionsDefaultAction",
+          "before": "Deny",
+          "after": "Allow",
+          "why": "reviewed public launch of studio.invi.lol: the main site of this app only; SCM, the plan and every other site keep their rules"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites",
+          "resource": "app-invi-studio-prod-001",
+          "property": "properties.siteConfig.ipSecurityRestrictionsDefaultAction",
+          "why": "reviewed public launch of studio.invi.lol: the main site of this app only; SCM, the plan and every other site keep their rules"
+        }
+      ],
+      "residualRisks": [
+        {
+          "id": "R-STUDIO-PUBLIC-INGRESS",
+          "text": "Applying this publishes Studio to the internet. Verify first from inside the app (Kudu SSH: /api/health and /api/health?deep=1 on localhost) and read the what-if: it must show only siteConfig.ipSecurityRestrictionsDefaultAction. The controls that carry an open site are HTTPS only with TLS 1.2, the same-origin check, the signed session cookie, the sign-in rate limit, the Studio key on every call to the onboarding API and fail-closed billing. Roll back with studio-web-e-ingress-close."
+        }
+      ],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
+        }
+      ]
+    },
+    "studio-web-e-ingress-close": {
+      "description": "Close the main site of the Studio web app again (default action Allow to Deny): the rollback of studio-web-e-ingress-public. The parameter file is the one of studio-web-a",
+      "template": "Infrastructure/modules/studio-web.bicep",
+      "parameters": "Infrastructure/environments/prod.studio-web.bicepparam",
+      "deploymentName": "invi-prod-studio-web-ingress-close-001",
+      "secureEnvironment": [],
+      "allowedCreates": [],
+      "allowedUnsupported": [],
+      "allowedNewSettings": {},
+      "allowedRemovedSettings": {},
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "siteConfig.ipSecurityRestrictionsDefaultAction",
+          "before": "Allow",
+          "after": "Deny",
+          "why": "rollback of the public launch: the main site of this app refuses every request again; SCM, the plan and every other site are not touched"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.Web/sites",
+          "resource": "app-invi-studio-prod-001",
+          "property": "properties.siteConfig.ipSecurityRestrictionsDefaultAction",
+          "why": "rollback of the public launch: the main site of this app refuses every request again; SCM, the plan and every other site are not touched"
+        }
+      ],
+      "residualRisks": [],
+      "touches": [
+        {
+          "type": "Microsoft.Insights/components",
+          "name": "appi-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites",
+          "name": "app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.Web/sites/config",
+          "name": "app-invi-studio-prod-001/appsettings"
+        },
+        {
+          "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+          "name": "app-invi-studio-prod-001/*"
+        },
+        {
+          "type": "Microsoft.Insights/diagnosticSettings",
+          "name": "diag-app-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+          "name": "id-gha-invi-studio-prod-001"
+        },
+        {
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "name": "id-gha-invi-studio-prod-001/github-production"
         }
       ]
     },
