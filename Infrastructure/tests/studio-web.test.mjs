@@ -63,6 +63,10 @@ test("secrets load in-process from the private vault with per-secret RBAC", () =
   const mappedSecrets = [...params.matchAll(/^\s+secretName: '([^']+)'$/gm)].map((match) => match[1]).sort();
   const granted = [...rbacParams.matchAll(/^\s+'([^']+)'$/gm)].map((match) => match[1]).sort();
   assert.deepEqual(mappedSecrets, granted);
+  assert.deepEqual(mappedSecrets, ["openai-api-key", "studio-api-key", "studio-google-places-api-key", "studio-session-secret"]);
+  assert.match(params, /setting: 'GOOGLE_PLACES_API_KEY'\n\s+secretName: 'studio-google-places-api-key'/);
+  assert.match(params, /setting: 'OPENAI_API_KEY'\n\s+secretName: 'openai-api-key'/);
+  assert.doesNotMatch(params, /MAPBOX/);
   assert.match(rbac, /module secretAccess 'rbac-keyvault-secret-scope\.bicep'/);
   assert.doesNotMatch(rbac, /scope: keyVault\b/);
 });

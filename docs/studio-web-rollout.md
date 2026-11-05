@@ -3,7 +3,7 @@
 The four deployments are deliberately separate:
 
 1. `studio-web-a` creates `app-invi-studio-prod-001`, Application Insights, the system identity and the GitHub OIDC identity. It reuses `asp-invi-prod-001`, the existing VNet integration subnet and Log Analytics workspace.
-2. `studio-web-b-rbac` grants the system identity `Key Vault Secrets User` on only `studio-api-key` and `studio-session-secret`, and later grants the GitHub identity `Website Contributor` on only the Studio site. After deployment A, copy its `githubDeployPrincipalId` output into the reviewed RBAC parameter file and add the predictable assignment to the safety manifest before B is approved.
+2. `studio-web-b-rbac` grants the system identity `Key Vault Secrets User` on only its four mapped secrets: `studio-api-key` and `studio-session-secret` (required at start), `studio-google-places-api-key` and the existing shared `openai-api-key` (optional: without them Studio skips the Google lookup and the cAI texts). All four must exist before B, because each assignment is scoped to its secret. Mapbox and `STUDIO_BILLING_PREVIEW` are not mapped: Studio reads no Mapbox token, and the preview flag is ignored on Azure, and later grants the GitHub identity `Website Contributor` on only the Studio site. After deployment A, copy its `githubDeployPrincipalId` output into the reviewed RBAC parameter file and add the predictable assignment to the safety manifest before B is approved.
 3. `studio-web-c-domain` binds `studio.invi.lol` after the ownership TXT record exists.
 4. `studio-web-d-domain-tls` creates the managed certificate and enables SNI after the binding and public DNS validate.
 
