@@ -2,6 +2,7 @@
 // Every dangerous scenario must be REJECTED; the baseline world and harmless changes must pass.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { baseWorld, run, copy, ids, NOW, PRINCIPAL } from "./fixtures.mjs";
 import { armGuid } from "../lib/guid.mjs";
 import { normalizePath, globToRegExp, isExpression } from "../lib/util.mjs";
@@ -175,6 +176,32 @@ test("platform noise listed in the manifest is accepted; an unlisted change is n
   };
   assert.equal(run(mutate(noisy("properties.Flow_Type"))).verdict, "PASS");
   failsWith(run(mutate(noisy("properties.RetentionInDays"))), "WHATIF-UNEXPECTED-CHANGE");
+});
+
+test("the isolationScope the platform fills on an identity is noise; another removed key, or no key list, is not", () => {
+  const type = "Microsoft.ManagedIdentity/userAssignedIdentities";
+  const rule = { type, ops: ["Delete"], paths: ["properties"], beforeKeysOnly: ["isolationScope"], why: "platform default" };
+  const identity = (before) => (w) => {
+    w.manifest.noise.push(rule);
+    w.whatif.changes.push({ resourceId: "i", type, name: "id-test", changeType: "Modify", deltas: [{ path: "properties", op: "Delete", before }] });
+    w.desiredResources.push({ type, name: "id-test", properties: {} });
+    w.manifest.deployments.main.touches.push({ type, name: "id-test" });
+  };
+  assert.equal(run(mutate(identity({ kind: "object", keys: ["isolationScope"] }))).verdict, "PASS");
+  // any key besides isolationScope, an empty or missing key list (an object of more than twelve keys has none) and a non-object
+  failsWith(run(mutate(identity({ kind: "object", keys: ["isolationScope", "clientId"] }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(identity({ kind: "object", keys: [] }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(identity({ kind: "object" }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(identity(undefined))), "WHATIF-UNEXPECTED-CHANGE");
+});
+
+test("the manifest's identity noise rule stays limited to isolationScope", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../../../safety/manifest.json", import.meta.url), "utf8"));
+  const rules = manifest.noise.filter((n) => n.type === "Microsoft.ManagedIdentity/userAssignedIdentities");
+  assert.equal(rules.length, 1);
+  assert.deepEqual(rules[0].ops, ["Delete"]);
+  assert.deepEqual(rules[0].paths, ["properties"]);
+  assert.deepEqual(rules[0].beforeKeysOnly, ["isolationScope"]);
 });
 
 test("a change to an immutable property is rejected as a replacement risk", () => {

@@ -248,6 +248,19 @@
         "properties.siteConfig.localMySqlEnabled"
       ],
       "why": "Schema defaults that what-if adds to its after-model for siteConfig, which it cannot read. They are not written: live netFrameworkVersion is v4.0 although this template has been deployed repeatedly. Irrelevant on Linux. Re-checked by the post-deploy verification."
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "ops": [
+        "Delete"
+      ],
+      "paths": [
+        "properties"
+      ],
+      "beforeKeysOnly": [
+        "isolationScope"
+      ],
+      "why": "The platform fills properties.isolationScope (None) on every user-assigned identity and the template does not declare it, so what-if shows it as removed. Nothing is deleted: seen on id-gha-invi-studio-prod-001 after deployment A (2026-11-05), and id-gha-invi-data-api-prod-001 and id-gha-invi-auth-api-prod-001 carry the same value. Matches only while isolationScope is the one key removed; any other key, or a delta without its key list, is still blocking."
     }
   ],
   "immutable": [
@@ -925,7 +938,7 @@
       "residualRisks": [
         {
           "id": "R-STUDIO-CODE-PREREQUISITE",
-          "text": "The site must receive a standalone package containing launch.mjs, key-vault-secrets.mjs and server.js. Current Studio main does not contain those files; merge an updated replacement for PR #1 before code deployment. The production billing gate must remain fail-closed."
+          "text": "The site must receive a standalone package containing launch.mjs, key-vault-secrets.mjs and server.js. Studio PR #2 (CetchApp/invi-studio, merged into main 2026-11-05) carries them; deploy only a package built from that main, through the deploy workflow. The production billing gate must remain fail-closed."
         },
         {
           "id": "R-STUDIO-KEY-PAIR",
