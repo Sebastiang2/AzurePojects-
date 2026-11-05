@@ -72,15 +72,40 @@ test("secrets load in-process from the private vault with per-secret RBAC", () =
 });
 
 test("GitHub OIDC is limited to the canonical repository production environment", () => {
-  assert.match(params, /^param githubRepository = 'CetchApp\/invi-studio'$/m);
-  assert.match(params, /^param githubEnvironment = 'production'$/m);
+  // GitHub presents the immutable subject for this repository (owner and repository ids; the Actions OIDC setting use_immutable_subject).
+  // The plain name form made deployment #12 fail with AADSTS700213. The ids come from
+  //   gh api repos/CetchApp/invi-studio --jq '{repo_id: .id, owner_id: .owner.id}'
+  const subject = "repo:CetchApp@262199775/invi-studio@1305967652:environment:production";
+  const ingressParams = read("environments/prod.studio-web.ingress-public.bicepparam");
+  for (const file of [params, ingressParams]) {
+    assert.match(file, /^param githubRepository = 'CetchApp@262199775\/invi-studio@1305967652'$/m);
+    assert.match(file, /^param githubEnvironment = 'production'$/m);
+    // The old name form must not come back: it is not what GitHub presents, so the deploy job could not sign in.
+    assert.doesNotMatch(file, /githubRepository = 'CetchApp\/invi-studio'/);
+  }
   assert.match(app, /subject: 'repo:\$\{githubRepository\}:environment:\$\{githubEnvironment\}'/);
-  assert.equal(
-    manifest.identities.known["id-gha-invi-studio-prod-001"]["github-production"].subject,
-    "repo:CetchApp/invi-studio:environment:production",
-  );
+  assert.equal(manifest.identities.known["id-gha-invi-studio-prod-001"]["github-production"].subject, subject);
   assert.match(rbac, /scope: studio\n/);
   assert.match(rbac, /de139f84-1756-47ae-9be6-808fbbe84772/);
+});
+
+test("deployment A carries exactly the reviewed OIDC subject transition, and the ingress deployments carry none", () => {
+  const credential = "id-gha-invi-studio-prod-001/github-production";
+  const before = "repo:CetchApp/invi-studio:environment:production";
+  const after = manifest.identities.known["id-gha-invi-studio-prod-001"]["github-production"].subject;
+  const a = manifest.deployments["studio-web-a"];
+  assert.equal(a.allowedChanges.length, 2, "the live entry and the what-if entry, nothing else");
+  const [live, whatif] = a.allowedChanges;
+  for (const entry of [live, whatif]) {
+    assert.equal(entry.resource, credential);
+    assert.deepEqual([entry.before, entry.after], [before, after], "the exact old and the exact new subject");
+  }
+  assert.deepEqual([live.property, live.whatif], ["subject", undefined]);
+  assert.deepEqual([whatif.whatif, whatif.type, whatif.property], [true, "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials", "properties.subject"]);
+  // E (public and close) must never be able to approve a subject change: the credential is A's, and A applies it once.
+  for (const key of ["studio-web-e-ingress-public", "studio-web-e-ingress-close"]) {
+    assert.ok(!manifest.deployments[key].allowedChanges.some((c) => c.resource === credential || /subject|federatedIdentityCredentials/.test(`${c.property}${c.type ?? ""}`)), key);
+  }
 });
 
 test("domain binding and TLS are separate reviewed deployments", () => {
