@@ -551,7 +551,7 @@
       "id-gha-invi-studio-api-prod-001": {},
       "id-gha-invi-studio-prod-001": {
         "github-production": {
-          "subject": "repo:CetchApp/invi-studio:environment:production",
+          "subject": "repo:CetchApp@262199775/invi-studio@1305967652:environment:production",
           "status": "declared"
         }
       }
@@ -974,7 +974,24 @@
       "allowedUnsupported": [],
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
-      "allowedChanges": [],
+      "allowedChanges": [
+        {
+          "resource": "id-gha-invi-studio-prod-001/github-production",
+          "property": "subject",
+          "before": "repo:CetchApp/invi-studio:environment:production",
+          "after": "repo:CetchApp@262199775/invi-studio@1305967652:environment:production",
+          "why": "GitHub presents the immutable OIDC subject for CetchApp/invi-studio (use_immutable_subject, owner id 262199775, repository id 1305967652); the name form made deployment #12 fail with AADSTS700213. Re-apply A once to change this one credential property; remove this entry and the next one after it has been applied"
+        },
+        {
+          "whatif": true,
+          "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
+          "resource": "id-gha-invi-studio-prod-001/github-production",
+          "property": "properties.subject",
+          "before": "repo:CetchApp/invi-studio:environment:production",
+          "after": "repo:CetchApp@262199775/invi-studio@1305967652:environment:production",
+          "why": "the same subject change as seen by what-if, exactly this before and after and nothing else; remove after it has been applied"
+        }
+      ],
       "residualRisks": [
         {
           "id": "R-STUDIO-CODE-PREREQUISITE",

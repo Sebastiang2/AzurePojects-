@@ -290,6 +290,58 @@ test("an unreviewed federated credential, or a changed subject, is rejected", ()
   failsWith(run(mutate((w) => w.live.identities.push({ name: "id-extra" }))), "IDENTITY-UNREVIEWED");
 });
 
+// A subject that GitHub presents differently from the credential (deployment #12: the immutable form with owner and repository ids) is
+// replaced by a reviewed transition: the manifest lists the new subject and THIS deployment names exactly old -> new. Nothing else passes.
+const OLD_SUBJECT = "repo:o/r:environment:production";
+const NEW_SUBJECT = "repo:o@1/r@2:environment:production";
+const subjectTransition = (extra = {}) => ({ resource: "id-test/fic-main", property: "subject", before: OLD_SUBJECT, after: NEW_SUBJECT, why: "reviewed transition", ...extra });
+const pendingSubject = (entries) => (w) => {
+  w.manifest.identities.known["id-test"]["fic-main"].subject = NEW_SUBJECT;
+  w.live.fic["id-test"][0].subject = OLD_SUBJECT;
+  w.manifest.deployments.main.allowedChanges = entries;
+};
+
+test("a federated credential subject changes only through an exact, reviewed transition of this deployment", () => {
+  failsWith(run(mutate(pendingSubject([]))), "FIC-SUBJECT-CHANGED");
+  const ok = run(mutate(pendingSubject([subjectTransition()])));
+  assert.equal(ok.verdict, "PASS", JSON.stringify(ids(ok)));
+  assert.ok(ids(ok, "allowed").includes("FIC-SUBJECT-TRANSITION"));
+  assert.ok(!ids(ok).includes("FIC-SUBJECT-CHANGED"));
+  // another live subject than the one reviewed as "before", or another "after" than the reviewed subject, is a changed subject
+  failsWith(run(mutate((w) => { pendingSubject([subjectTransition()])(w); w.live.fic["id-test"][0].subject = "repo:evil/x:environment:production"; })), "FIC-SUBJECT-CHANGED");
+  failsWith(run(mutate((w) => { pendingSubject([subjectTransition()])(w); w.live.fic["id-test"][0].subject = OLD_SUBJECT.toUpperCase(); })), "FIC-SUBJECT-CHANGED");
+  failsWith(run(mutate(pendingSubject([subjectTransition({ after: "repo:evil/x:environment:production" })]))), "FIC-SUBJECT-CHANGED");
+  // an entry that does not name both values is not a transition, and neither is one for another credential or property
+  for (const incomplete of [{ before: undefined }, { after: undefined }, { resource: "id-test/fic-other" }, { property: "issuer" }]) {
+    failsWith(run(mutate(pendingSubject([subjectTransition(incomplete)]))), "FIC-SUBJECT-CHANGED");
+  }
+  // a what-if entry does not approve the live check
+  failsWith(run(mutate(pendingSubject([subjectTransition({ whatif: true, type: "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials", property: "properties.subject" })]))), "FIC-SUBJECT-CHANGED");
+});
+
+test("what-if may modify a federated credential subject only from exactly the reviewed value to exactly the reviewed value", () => {
+  const FIC = "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials";
+  const world = (entry, delta = { path: "properties.subject", op: "Modify", before: OLD_SUBJECT, after: NEW_SUBJECT }) => (w) => {
+    pendingSubject([subjectTransition()])(w);
+    w.manifest.deployments.main.touches = [...(w.manifest.deployments.main.touches ?? []), { type: FIC, name: "id-test/fic-main" }];
+    if (entry) w.manifest.deployments.main.allowedChanges.push(entry);
+    w.whatif.changes.push({ resourceId: "f", type: FIC, name: "id-test/fic-main", changeType: "Modify", deltas: [delta] });
+  };
+  const entry = (extra = {}) => ({ whatif: true, type: FIC, resource: "id-test/fic-main", property: "properties.subject", before: OLD_SUBJECT, after: NEW_SUBJECT, why: "reviewed transition", ...extra });
+  failsWith(run(mutate(world(null))), "WHATIF-UNEXPECTED-CHANGE");
+  const ok = run(mutate(world(entry())));
+  assert.equal(ok.verdict, "PASS", JSON.stringify(ids(ok)));
+  assert.ok(ids(ok, "allowed").includes("WHATIF-CHANGE"));
+  // the entry names the values: any other new value (or old value) is not approved
+  failsWith(run(mutate(world(entry(), { path: "properties.subject", op: "Modify", before: OLD_SUBJECT, after: "repo:evil/x:environment:production" }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(world(entry(), { path: "properties.subject", op: "Modify", before: "repo:evil/x:environment:production", after: NEW_SUBJECT }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(world(entry(), { path: "properties.issuer", op: "Modify", before: "a", after: "b" }))), "WHATIF-UNEXPECTED-CHANGE");
+  failsWith(run(mutate(world(entry(), { path: "properties.subject", op: "Modify", before: OLD_SUBJECT, after: NEW_SUBJECT.toUpperCase() }))), "WHATIF-UNEXPECTED-CHANGE");
+  // an entry without before/after keeps approving the path whatever the values (the behaviour every other what-if entry has)
+  const open = run(mutate(world(entry({ before: undefined, after: undefined }), { path: "properties.subject", op: "Modify", before: "x", after: "y" })));
+  assert.ok(ids(open, "allowed").includes("WHATIF-CHANGE"));
+});
+
 // ---- sites --------------------------------------------------------------------------------------------------------------
 test("a site property that would change is rejected", () => {
   failsWith(run(mutate((w) => (w.desiredResources.find((x) => x.name === "app-test").properties.siteConfig.alwaysOn = false))), "SITE-PROP-CHANGE");

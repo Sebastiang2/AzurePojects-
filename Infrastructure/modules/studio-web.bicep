@@ -39,7 +39,7 @@ param appSettings object
 @description('Environment variable and Key Vault secret-name pairs loaded by launch.mjs')
 param settingSecretNames secretMapping[]
 
-@description('GitHub repository whose protected environment may deploy this app')
+@description('GitHub repository whose protected environment may deploy this app, in the form GitHub puts into the OIDC subject: owner@ownerId/repo@repoId (immutable subject, survives a rename). The plain owner/name form only matches a repository whose Actions OIDC setting use_immutable_subject is false')
 param githubRepository string
 
 @description('GitHub environment named in the federated credential')

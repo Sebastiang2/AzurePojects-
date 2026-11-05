@@ -459,7 +459,7 @@ export function checkRbac(ctx) {
 // Identities and federated credentials (GitHub OIDC): a new credential is a new way into the subscription
 // ---------------------------------------------------------------------------------------------------------------------
 export function checkIdentities(ctx) {
-  const { live, manifest, findings } = ctx;
+  const { live, manifest, findings, deployment } = ctx;
   const known = manifest.identities?.known ?? {};
   for (const identity of live.identities) {
     findings.count("identitiesReviewed");
@@ -472,8 +472,17 @@ export function checkIdentities(ctx) {
     for (const c of credentials) {
       const k = reviewed[c.name];
       if (!k) findings.fail("FIC-UNREVIEWED", `${identity.name}/${c.name}`, `federated credential (subject ${c.subject}) is not in the reviewed list`);
-      else if (k.subject !== c.subject) findings.fail("FIC-SUBJECT-CHANGED", `${identity.name}/${c.name}`, `subject changed from ${k.subject} to ${c.subject}`);
-      else if (/^stale/.test(k.status ?? "")) findings.info("FIC-STALE", `${identity.name}/${c.name}`, k.status);
+      else if (k.subject !== c.subject) {
+        // A reviewed transition: the live credential still has the previous subject and THIS deployment's manifest entry names exactly that
+        // change (the live subject -> the reviewed subject of identities.known). Anything else is still a changed subject. The comparison is
+        // exact and case-sensitive, as Entra matches a subject: a difference in case is a different subject.
+        const resource = `${identity.name}/${c.name}`;
+        const transition = (deployment.allowedChanges ?? []).find(
+          (a) => a.whatif === undefined && lc(a.resource) === lc(resource) && lc(a.property) === "subject" && typeof a.before === "string" && typeof a.after === "string" && a.before === c.subject && a.after === k.subject,
+        );
+        if (transition) findings.allowed("FIC-SUBJECT-TRANSITION", resource, `live subject ${c.subject} is replaced by the reviewed ${k.subject} by this deployment (${transition.why ?? "listed in manifest"})`);
+        else findings.fail("FIC-SUBJECT-CHANGED", resource, `subject changed from ${k.subject} to ${c.subject}`);
+      } else if (/^stale/.test(k.status ?? "")) findings.info("FIC-STALE", `${identity.name}/${c.name}`, k.status);
     }
     for (const name of Object.keys(reviewed)) {
       if (!credentials.some((c) => c.name === name)) findings.info("FIC-MISSING", `${identity.name}/${name}`, "reviewed credential no longer exists live");

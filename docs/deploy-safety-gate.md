@@ -109,7 +109,12 @@ endringen som trenger det, med begrunnelse:
   antallet manifestet godkjente, og flere enn det stopper.
 * `allowedCreates`: ressurser som får opprettes (for eksempel adopsjon av en håndlaget diagnostikkinnstilling)
 * `allowedNewSettings`, `allowedRemovedSettings`, `allowedChanges`: nye/fjernede/endrede app settings og egenskaper, med
-  eksakt før- og etter-verdi
+  eksakt før- og etter-verdi. En `whatif: true`-oppføring med `before` og/eller `after` godkjenner bare et delta med akkurat
+  de verdiene (strenger, store/små bokstaver teller); uten dem godkjenner den stien uansett verdi, som før. En oppføring med
+  `property: "subject"` på `<identitet>/<credential>` og både `before` og `after` er en gjennomgått overgang av en federated
+  credential: live-subject må være `before` og `after` må være subjectet i `identities.known`, ellers `FIC-SUBJECT-CHANGED`.
+  Den godkjente overgangen vises som `FIC-SUBJECT-TRANSITION` og gjelder bare den deployen som har oppføringen. Fjern oppføringene
+  når deployen er gjort
 * `apps.*.required` og `mustEqual`: innstillinger som alltid må finnes og verdier som må holde
 * `noise`: egenskaper plattformen fyller inn som what-if alltid viser (med begrunnelse). `beforeKeysOnly` begrenser en
   regel til endringer der bare de oppgitte nøklene fjernes: når nøkkellisten mangler i beviset, treffer regelen ikke og

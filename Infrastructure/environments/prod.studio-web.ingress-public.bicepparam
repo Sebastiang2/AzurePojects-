@@ -60,5 +60,9 @@ param settingSecretNames = [
   }
 ]
 
-param githubRepository = 'CetchApp/invi-studio'
+// The repository in GitHub's immutable OIDC subject form, owner@ownerId/repo@repoId, because that is what GitHub presents for this
+// repository (Actions OIDC setting use_immutable_subject = true; deployment #12 failed with AADSTS700213 against the name form
+// CetchApp/invi-studio). The ids identify the owner and the repository and survive a rename. The federated credential subject is
+// repo:<this value>:environment:<githubEnvironment>.
+param githubRepository = 'CetchApp@262199775/invi-studio@1305967652'
 param githubEnvironment = 'production'

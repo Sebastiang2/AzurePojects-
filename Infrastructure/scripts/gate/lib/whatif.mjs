@@ -195,8 +195,11 @@ export function evaluateWhatIf(ctx) {
             noiseCounts["Microsoft.Web/sites/config appsettings bag (judged by BAG-* checks)"] = (noiseCounts["Microsoft.Web/sites/config appsettings bag (judged by BAG-* checks)"] ?? 0) + 1;
             continue;
           }
+          // An entry that carries "before" and/or "after" approves only a delta with exactly those values (strings, case-sensitive); an entry
+          // without them approves the path whatever the values, as before.
           const allowance = (deployment.allowedChanges ?? []).find(
-            (c) => c.whatif === true && lc(c.type) === lc(change.type) && lc(c.resource) === lc(change.name) && globToRegExp(c.property).test(normalizePath(d.path)),
+            (c) => c.whatif === true && lc(c.type) === lc(change.type) && lc(c.resource) === lc(change.name) && globToRegExp(c.property).test(normalizePath(d.path)) &&
+              (c.before === undefined || c.before === d.before) && (c.after === undefined || c.after === d.after),
           );
           if (allowance) {
             findings.allowed("WHATIF-CHANGE", subject, `${d.path} (${allowance.why ?? "listed in manifest"})`);
