@@ -111,7 +111,9 @@ endringen som trenger det, med begrunnelse:
 * `allowedNewSettings`, `allowedRemovedSettings`, `allowedChanges`: nye/fjernede/endrede app settings og egenskaper, med
   eksakt før- og etter-verdi
 * `apps.*.required` og `mustEqual`: innstillinger som alltid må finnes og verdier som må holde
-* `noise`: egenskaper plattformen fyller inn som what-if alltid viser (med begrunnelse)
+* `noise`: egenskaper plattformen fyller inn som what-if alltid viser (med begrunnelse). `beforeKeysOnly` begrenser en
+  regel til endringer der bare de oppgitte nøklene fjernes: når nøkkellisten mangler i beviset, treffer regelen ikke og
+  endringen stopper. Brukt for `isolationScope` på en `userAssignedIdentity`
 * `defaults`: verdier plattformen rapporterer for egenskaper koden ikke setter: standard for subnett og siteConfig, og
   `authSettingsV2.<app>`, de live-only bladene i Easy Auth som er plattformstandard. Easy Auth erstattes som helhet, så alt live
   som ikke er deklarert og ikke står her stopper (`AUTH-LIVE-ONLY`)

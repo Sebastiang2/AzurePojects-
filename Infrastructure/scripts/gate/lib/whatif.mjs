@@ -5,12 +5,26 @@ import { originLockTransition } from "./checks-sites.mjs";
 
 const PROTECTED = /(subnets|securityRules|ipSecurityRestrictions|scmIpSecurityRestrictions|hostNameSslStates|hostNameBindings|accessPolicies|userAssignedIdentities|privateEndpointConnections|delegations|serviceEndpoints|virtualNetworkRules|identity)(\[|\.|$)/i;
 
-function matchNoise(manifest, type, path, op) {
+// A noise rule may carry beforeKeysOnly. It then matches only a delta whose "before" is an object whose keys are all in that
+// list. The reduced what-if names the keys of an object it hides, and leaves them out for an object with more than twelve
+// keys: without the keys in the evidence the rule does not match, so it fails closed.
+function onlyKeys(before, allowed) {
+  return (
+    before?.kind === "object" &&
+    Array.isArray(before.keys) &&
+    before.keys.length > 0 &&
+    before.keys.every((k) => allowed.map(lc).includes(lc(k)))
+  );
+}
+
+function matchNoise(manifest, type, delta) {
+  const { path, op } = delta;
   return (manifest.noise ?? []).find(
     (n) =>
       lc(n.type) === lc(type) &&
       (!n.ops || n.ops.map(lc).includes(lc(op))) &&
-      (n.paths ?? []).some((g) => globToRegExp(g).test(normalizePath(path))),
+      (n.paths ?? []).some((g) => globToRegExp(g).test(normalizePath(path))) &&
+      (!n.beforeKeysOnly || onlyKeys(delta.before, n.beforeKeysOnly)),
   );
 }
 
@@ -85,7 +99,7 @@ export function evaluateWhatIf(ctx) {
             noiseCounts["changes ARM itself marks as NoEffect"] = (noiseCounts["changes ARM itself marks as NoEffect"] ?? 0) + 1;
             continue;
           }
-          const rule = matchNoise(manifest, change.type, d.path, d.op);
+          const rule = matchNoise(manifest, change.type, d);
           if (rule) {
             countNoise(rule);
             continue;
