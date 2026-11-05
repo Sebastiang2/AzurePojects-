@@ -126,7 +126,7 @@
         "STUDIO_PUBLIC_URL": "https://studio.invi.lol",
         "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
         "STUDIO_REQUIRE_EMAIL": "false",
-        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET"
+        "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET;studio-google-places-api-key:GOOGLE_PLACES_API_KEY;openai-api-key:OPENAI_API_KEY"
       },
       "introducedBy": "studio-web-a"
     }
@@ -929,7 +929,7 @@
         },
         {
           "id": "R-STUDIO-KEY-PAIR",
-          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both mapped secrets must exist before code deployment."
+          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both required secrets (studio-api-key, studio-session-secret) must exist before code deployment. All four mapped secrets must exist before studio-web-b-rbac, which scopes one role assignment to each; the two optional ones (studio-google-places-api-key, the shared openai-api-key) only switch features on."
         }
       ],
       "touches": [
@@ -974,7 +974,7 @@
         {
           "module": "secretAccess",
           "why": "role assignments named with guid() on the Studio system identity, one per secret; verified against live RBAC",
-          "count": 2
+          "count": 4
         }
       ],
       "allowedNewSettings": {},
