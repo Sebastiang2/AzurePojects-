@@ -476,6 +476,46 @@
         "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-admin-prod-001",
         "description": "id-gha-invi-admin-prod-001: Website Contributor on the admin app (hand-made deploy identity; to be adopted in IaC-5)",
         "status": "hand-made"
+      },
+      {
+        "name": "03c8bf68-92ca-587b-bce6-330e8f6a1978",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-api-key",
+        "description": "Studio system identity: Secrets User on secret studio-api-key (modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "6c7aa19d-2042-56a2-9f84-b85b9f35a73d",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-session-secret",
+        "description": "Studio system identity: Secrets User on secret studio-session-secret (modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "589a4988-f919-5724-9d78-62f68d6f19a5",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-google-places-api-key",
+        "description": "Studio system identity: Secrets User on secret studio-google-places-api-key (modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "75b74939-49e2-549a-aa61-c9989f4febb6",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/openai-api-key",
+        "description": "Studio system identity: Secrets User on the shared secret openai-api-key (modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "62d971dd-d202-5856-98a4-06f91ac554ff",
+        "role": "Website Contributor",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-studio-prod-001",
+        "description": "id-gha-invi-studio-prod-001: Website Contributor on the Studio site only (GitHub OIDC deploy identity; modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
       }
     ]
   },
@@ -982,7 +1022,33 @@
       "parameters": "Infrastructure/environments/prod.studio-web.rbac-owner.bicepparam",
       "deploymentName": "invi-prod-studio-web-rbac-001",
       "secureEnvironment": [],
-      "allowedCreates": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "03c8bf68-92ca-587b-bce6-330e8f6a1978",
+          "why": "Key Vault Secrets User for the Studio system identity on secret studio-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "6c7aa19d-2042-56a2-9f84-b85b9f35a73d",
+          "why": "Key Vault Secrets User for the Studio system identity on secret studio-session-secret only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "589a4988-f919-5724-9d78-62f68d6f19a5",
+          "why": "Key Vault Secrets User for the Studio system identity on secret studio-google-places-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "75b74939-49e2-549a-aa61-c9989f4febb6",
+          "why": "Key Vault Secrets User for the Studio system identity on the shared secret openai-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "62d971dd-d202-5856-98a4-06f91ac554ff",
+          "why": "Website Contributor for the GitHub OIDC deploy identity id-gha-invi-studio-prod-001 on app-invi-studio-prod-001 only"
+        }
+      ],
       "allowedUnsupported": [
         {
           "module": "secretAccess",
@@ -994,7 +1060,28 @@
       "allowedRemovedSettings": {},
       "allowedChanges": [],
       "residualRisks": [],
-      "touches": []
+      "touches": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "03c8bf68-92ca-587b-bce6-330e8f6a1978"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "6c7aa19d-2042-56a2-9f84-b85b9f35a73d"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "589a4988-f919-5724-9d78-62f68d6f19a5"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "75b74939-49e2-549a-aa61-c9989f4febb6"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "62d971dd-d202-5856-98a4-06f91ac554ff"
+        }
+      ]
     },
     "studio-web-c-domain": {
       "description": "Bind studio.invi.lol to the existing Studio app without TLS, after DNS ownership validation",
