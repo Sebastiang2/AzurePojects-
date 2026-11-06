@@ -255,6 +255,9 @@ echo
 echo "Deploying $DEPLOYMENT_NAME (Incremental)..."
 "${DEPLOY_CMD[@]}"
 STATE="$(az deployment group show --name "$DEPLOYMENT_NAME" --resource-group "$RG" --subscription "$SUB" --query properties.provisioningState --output tsv --only-show-errors)"
+# The Azure CLI for Windows ends every tsv line with CRLF and $(...) removes only the LF: on a bash that does not also drop the
+# CR (WSL, Linux) "Succeeded" would never equal "Succeeded\r". Remove the CR and nothing else: the comparison stays exact.
+STATE="${STATE//$'\r'/}"
 echo "Deployment state: $STATE"
 [ "$STATE" = "Succeeded" ] || { echo "ERROR: deployment did not finish in Succeeded state. See docs/deploy-runbook.md (rollback)." >&2; exit 1; }
 
@@ -285,13 +288,14 @@ elif [ "$WARMUP_MODE" = "false" ]; then
 fi
 
 if EXISTING_SITES="$(az resource list --resource-group "$RG" --subscription "$SUB" --resource-type Microsoft.Web/sites --query "[].name" --output tsv --only-show-errors 2>/dev/null)"; then
-  EXISTING_SITES="$(printf '%s\n' "$EXISTING_SITES" | tr '\n' ' ')"
+  EXISTING_SITES="$(printf '%s\n' "$EXISTING_SITES" | tr '\r\n' '  ')"
 else
   EXISTING_SITES="*"
 fi
 
 for app in $(node "$(to_native "$HERE/gate/apps-to-verify.mjs")" "$MANIFEST_N" "$DEPLOYMENT" $EXISTING_SITES); do
   state="$(az webapp show --resource-group "$RG" --name "$app" --subscription "$SUB" --query state --output tsv --only-show-errors 2>/dev/null || echo unknown)"
+  state="${state//$'\r'/}"
   echo "App $app: $state"
   [ "$state" = "Running" ] || { echo "ERROR: $app is not running." >&2; exit 1; }
 done

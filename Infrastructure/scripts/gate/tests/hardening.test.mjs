@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -314,6 +314,103 @@ test("a real deploy.sh run without a terminal refuses before it does anything", 
   const r = spawnSync("bash", [join(scriptsDir, "deploy.sh"), "--deployment", "main"], { encoding: "utf8", input: "" });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /interactive terminal/);
+});
+
+// ---- deploy.sh after the deployment: the Windows Azure CLI ends every tsv line with CRLF -------------------------------
+// `$(...)` strips only the LF, so on a bash that does not also drop the CR (WSL, Linux, macOS; Git Bash's Cygwin bash does)
+// "Succeeded" never equalled "Succeeded\r": the script printed "Deployment state: Succeeded" and then refused to go on. This
+// runs the REAL tail of deploy.sh (from step 6 to the end) against a stub `az` that writes CRLF, with the gate stubbed out.
+const deployScript = join(scriptsDir, "deploy.sh");
+
+function runDeployTail({ deployState = "Succeeded", appState = "Running", gateExit = 0 }) {
+  const source = readFileSync(deployScript, "utf8").replace(/\r\n/g, "\n");
+  const start = source.indexOf("\n# ---- 6. deploy");
+  assert.ok(start > 0, "deploy.sh no longer has the step 6 marker this test cuts at");
+  const toNative = /^to_native\(\) \{\n[\s\S]*?^\}\n/m.exec(source);
+  assert.ok(toNative, "deploy.sh no longer defines to_native");
+
+  const dir = mkdtempSync(join(tmpdir(), "deploy-tail-"));
+  try {
+    const here = join(dir, "scripts");
+    mkdirSync(join(here, "gate"), { recursive: true });
+    copyFileSync(join(gateDir, "apps-to-verify.mjs"), join(here, "gate", "apps-to-verify.mjs"));
+    writeFileSync(join(here, "preflight.sh"), '#!/usr/bin/env bash\ntouch "$(dirname "${BASH_SOURCE[0]}")/post-deploy-gate-ran"\nexit "${STUB_GATE_EXIT:-0}"\n', { mode: 0o755 });
+    // app-two is declared by ANOTHER deployment but exists: it is verified only when the site list is parsed correctly
+    writeFileSync(join(here, "manifest.json"), JSON.stringify({ apps: { "app-one": {}, "app-two": { introducedBy: "some-other-deployment" } } }));
+    const bin = join(dir, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "az"), [
+      "#!/usr/bin/env bash",
+      'case "$*" in',
+      '  *"deployment group create"*) exit 0 ;;',
+      '  *"deployment group show"*) printf "%s\\r\\n" "$STUB_DEPLOY_STATE" ;;',
+      '  *"resource list"*) printf "app-one\\r\\napp-two\\r\\n" ;;',
+      '  *"webapp show"*) printf "%s\\r\\n" "$STUB_APP_STATE" ;;',
+      '  *) echo "unexpected az call: $*" >&2; exit 99 ;;',
+      "esac",
+      "",
+    ].join("\n"), { mode: 0o755 });
+    writeFileSync(join(dir, "harness.sh"), [
+      "#!/usr/bin/env bash",
+      "set -euo pipefail",
+      "export MSYS_NO_PATHCONV=1",
+      'HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts" && pwd)"',
+      toNative[0],
+      "SUB=00000000-0000-0000-0000-000000000001; RG=rg-test; DEPLOYMENT=studio-web-test; DEPLOYMENT_NAME=studio-web-test-001",
+      'MANIFEST_N="$(to_native "$HERE/manifest.json")"',
+      'WARMUP_MODE=""; REQUIRED_BACKEND_REVISION=""',
+      "DEPLOY_CMD=(az deployment group create)",
+      source.slice(start),
+    ].join("\n"));
+
+    const env = {
+      ...process.env,
+      PATH: `${bin}${process.platform === "win32" ? ";" : ":"}${process.env.PATH}`,
+      STUB_DEPLOY_STATE: deployState, STUB_APP_STATE: appState, STUB_GATE_EXIT: String(gateExit),
+    };
+    // Never let this test reach the real Azure CLI: refuse to run unless the stub is what `az` resolves to.
+    const resolved = spawnSync("bash", ["-c", "command -v az"], { encoding: "utf8", env }).stdout;
+    assert.ok(resolved.includes("deploy-tail-"), `the stub az is not first on PATH (resolved ${JSON.stringify(resolved.trim())})`);
+    const r = spawnSync("bash", [join(dir, "harness.sh")], { encoding: "utf8", env });
+    return { status: r.status, out: `${r.stdout}${r.stderr}`, gateRan: existsSync(join(here, "post-deploy-gate-ran")) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("deploy.sh: a deployment that Azure reports as Succeeded goes on to the post-deployment gate, even when az writes CRLF", { skip: !haveBash }, () => {
+  const r = runDeployTail({});
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /Deployment state: Succeeded/);
+  assert.ok(!/did not finish in Succeeded state/.test(r.out), r.out);
+  assert.ok(r.gateRan, `the post-deployment gate did not run:\n${r.out}`);
+  assert.match(r.out, /Post-deployment verification passed/);
+  assert.match(r.out, /\nDone\./);
+});
+
+test("deploy.sh: after the deployment every existing app is verified, including one another deployment introduced (CRLF site list)", { skip: !haveBash }, () => {
+  const r = runDeployTail({});
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /App app-one: Running\n/);
+  assert.match(r.out, /App app-two: Running\n/);
+});
+
+test("deploy.sh: the CRLF handling does not loosen the gate: a state other than Succeeded, a failed gate or a stopped app still stops the script", { skip: !haveBash }, () => {
+  const failed = runDeployTail({ deployState: "Failed" });
+  assert.equal(failed.status, 1, failed.out);
+  assert.match(failed.out, /did not finish in Succeeded state/);
+  assert.ok(!failed.gateRan, "the post-deployment gate must not run after a deployment that did not succeed");
+
+  const lower = runDeployTail({ deployState: "succeeded" });
+  assert.equal(lower.status, 1, "the comparison stays exact: only Succeeded passes");
+
+  const gate = runDeployTail({ gateExit: 1 });
+  assert.equal(gate.status, 1, gate.out);
+  assert.match(gate.out, /post-deployment verification FAILED/);
+
+  const stopped = runDeployTail({ appState: "Stopped" });
+  assert.equal(stopped.status, 1, stopped.out);
+  assert.match(stopped.out, /is not running/);
 });
 
 // ---- verify-secure-parameters.sh (operator-run; tested against a stub `az`, never against Azure) -------------------------
