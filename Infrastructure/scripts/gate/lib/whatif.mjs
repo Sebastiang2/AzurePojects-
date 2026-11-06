@@ -1,7 +1,7 @@
 // Judges the reduced what-if result (summarize-whatif.mjs output) against the manifest. what-if is one of three independent
 // signals (the others are the offline desired-vs-live checks and the RBAC/evidence checks); it is never trusted alone.
 import { lc, normalizePath, globToRegExp, isExpression } from "./util.mjs";
-import { originLockTransition } from "./checks-sites.mjs";
+import { liveBindingSslState, originLockTransition } from "./checks-sites.mjs";
 
 const PROTECTED = /(subnets|securityRules|ipSecurityRestrictions|scmIpSecurityRestrictions|hostNameSslStates|hostNameBindings|accessPolicies|userAssignedIdentities|privateEndpointConnections|delegations|serviceEndpoints|virtualNetworkRules|identity)(\[|\.|$)/i;
 
@@ -103,6 +103,17 @@ export function evaluateWhatIf(ctx) {
           if (rule) {
             countNoise(rule);
             continue;
+          }
+          // ARM leaves sslState out of a hostname binding that has no certificate, so once such a binding exists what-if reports the template's
+          // value as a "Create" on it. That is no change when the site itself reports that very state for that very host (hostNameSslStates);
+          // an unknown or contradictory live state, another value, or another host is not covered and falls through to the manifest or fails.
+          if (lc(change.type) === "microsoft.web/sites/hostnamebindings" && d.path === "properties.sslState" && d.op === "Create" && d.before == null) {
+            const [bindingSite, bindingHost] = String(change.name).split("/");
+            const liveSsl = liveBindingSslState(live.apps[bindingSite], bindingHost);
+            if (!liveSsl.conflict && liveSsl.state !== undefined && typeof d.after === "string" && lc(liveSsl.state) === lc(d.after)) {
+              findings.allowed("WHATIF-BINDING-SSL-OMITTED", subject, `${d.path} -> ${d.after} equals the state ${liveSsl.source} reports for ${bindingHost}; ARM leaves the property out of a binding without a certificate`);
+              continue;
+            }
           }
           // The reduced what-if hides array bodies. Accept only a whole, manifest-exact transition independently
           // verified against the desired snapshot and live access rules; never exempt SCM or another site.

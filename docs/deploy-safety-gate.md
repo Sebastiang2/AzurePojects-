@@ -44,7 +44,7 @@ utrulling: `deploy.sh` kjører sin egen gate og krever ren arbeidskopi på `orig
 | 8 | Fullstendige app setting-navn | `BAG-LIVE-ONLY` (finnes live, mangler i koden: ville blitt slettet), `BAG-NEW`, `BAG-VALUE-CHANGE` |
 | 9 | Nødvendige settings | `BAG-REQUIRED-MISSING`, `BAG-INVARIANT` (for eksempel `WebDrafts__Enabled` må være `false`) |
 | 10 | Key Vault, identiteter, RBAC | `KV-*`, `RBAC-*` (forutsagt rolletildelingsnavn mot live, `RBAC-UNREVIEWED`), `IDENTITY-*`, `FIC-*` |
-| 11 | Domener og sertifikatbindinger bevares | `BINDING-*`, `AUTH-CHANGE` (Easy Auth), `BINDING-UNMANAGED` (informasjon) |
+| 11 | Domener og sertifikatbindinger bevares | `BINDING-*` (blant dem `BINDING-SSL-CHANGE`, `BINDING-SSL-EVIDENCE`, `BINDING-THUMBPRINT-CHANGE`, `BINDING-CERT-MISSING`), `WHATIF-BINDING-SSL-OMITTED` (informasjon, se «SSL-tilstanden til en domenebinding»), `AUTH-CHANGE` (Easy Auth), `BINDING-UNMANAGED` (informasjon) |
 | 12 | Slots og SCM | `SLOT-*`, `SITE-PROP-CHANGE` (inkl. SCM-egenskaper), `ACCESS-RULE-*`, `PUBLISH-POLICY-CHANGE` |
 | 13 | Manglende rettigheter, ufullstendige resultater, uavklart drift | `EVIDENCE-*` (manglende/ulesbare data, feilet kall, for gammelt grunnlag), `STEP-*` |
 | 14 | Eksplisitt godkjenning | `deploy.sh`: skrevet `DEPLOY <nøkkel> <digest>`; godkjenningen er bundet til digesten av filene og grunnlaget, og grunnlaget må fortsatt være yngre enn grensen *etter* at godkjenningen er skrevet |
@@ -73,6 +73,34 @@ Gaten stoler ikke på ett signal alene:
 
 Nested objekter (app settings-bag, `securityRules`, `subnets`) erstattes som helhet også i Incremental-modus. Derfor sammenlignes
 de element for element mot live, uavhengig av hva what-if rapporterer.
+
+### SSL-tilstanden til en domenebinding
+
+ARM utelater `sslState` (og `thumbprint`) fra en `Microsoft.Web/sites/hostNameBindings`-ressurs som ikke har noe sertifikat
+bundet. Målt 2026-11-06 på `app-invi-studio-prod-001/studio.invi.lol` etter `studio-web-c-domain`, og likt på API-versjonene
+2022-09-01, 2023-12-01 og 2024-04-01: bindingen har ingen `sslState`-egenskap, mens sidens egen `hostNameSslStates`
+(`az webapp show`) sier `sslState: Disabled`, `thumbprint: null`, `ipBasedSslState: NotConfigured` for det samme vertsnavnet.
+Det er ingen drift, bare to ulike visninger av samme tilstand.
+
+Gaten leste før bare bindingsressursen og sammenlignet «ikke rapportert» med malens `Disabled`. Det ga tre falske funn når
+bindingen allerede fantes: `BINDING-SSL-CHANGE` (`undefined` → `Disabled`) i etter-kontrollen av C,
+`WHATIF-UNEXPECTED-CHANGE` (what-if viser malens `Disabled` som `Create properties.sslState` mot en manglende live-verdi), og
+i førkontrollen av D traff ikke manifestets `before: "Disabled"` en `undefined`. Testene brukte en binding som returnerte
+`sslState`, noe produksjon ikke gjør, så de fanget det ikke.
+
+Regelen nå (`liveBindingSslState` i `lib/checks-sites.mjs`):
+
+1. Bindingens egen `sslState` brukes hvis den finnes.
+2. Ellers brukes sidens `hostNameSslStates`-oppføring for **samme vertsnavn** (andre vertsnavns tilstand sier ingenting).
+3. Melder begge og de er uenige, er det `BINDING-SSL-EVIDENCE` (feil), uansett hva malen vil.
+4. Melder ingen av dem noe, er tilstanden **ukjent**. Den tolkes aldri som `Disabled`: `BINDING-SSL-CHANGE` vises med «unknown»,
+   og what-if-deltaet forblir ikke godkjent.
+
+`evaluateWhatIf` godtar `Create properties.sslState` på en binding (`WHATIF-BINDING-SSL-OMITTED`, informasjon) bare når verdien
+malen setter er lik den tilstanden live-beviset rapporterer for samme binding. Alt annet, som `SniEnabled` mot live `Disabled`,
+nedgradering, et annet vertsnavn eller en ukjent thumbprint, er som før et funn eller krever en eksakt manifestoppføring.
+Manifestet er uendret: C godkjenner fortsatt ingen endring, og D godkjenner fortsatt nøyaktig `Disabled` → `SniEnabled` for
+`app-invi-studio-prod-001/studio.invi.lol`. Testene i `studio-web-binding-evidence.test.mjs` bruker produksjonens faktiske form.
 
 ## MySQL-serveren og administratorpassordet
 
@@ -156,6 +184,8 @@ Manifestet bør kreve review av en som kan Azure-sikkerhet (for eksempel CODEOWN
 | `WHATIF-UNEXPECTED-CHANGE` | en endring som ikke er støy | les den; er den ment, legg den i manifestet med begrunnelse |
 | `RBAC-NAME-COLLISION` | samme prinsipal/rolle/scope finnes live under et annet navn | adopter navnet (`existingAssignmentNames`), ellers feiler deploy |
 | `RBAC-UNREVIEWED` / `FIC-UNREVIEWED` | ny tildeling/credential siden forrige gjennomgang | finn ut hvem og hvorfor; legg den i manifestet eller fjern den |
+| `BINDING-SSL-CHANGE` med «unknown» | verken bindingen eller sidens `hostNameSslStates` oppgir SSL-tilstanden for vertsnavnet | les live-tilstanden på nytt (`az webapp show`, `hostNameSslStates`); ikke legg inn `before: "Disabled"` uten at den er målt |
+| `BINDING-SSL-EVIDENCE` | bindingen og sidens `hostNameSslStates` er uenige om SSL-tilstanden | avklar hva som faktisk gjelder før noe godkjennes; ingen manifestoppføring løser det |
 | `EVIDENCE-*` | manglende rettigheter, feilet kall, ufullstendig eller gammelt grunnlag | rett årsaken og kjør på nytt; aldri tolk det som «ingenting der» |
 
 ## Tester
