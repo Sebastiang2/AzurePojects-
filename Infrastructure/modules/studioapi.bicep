@@ -48,7 +48,7 @@ param linuxFxVersion string = 'DOTNETCORE|10.0'
 @description('Startup command, dotnet <Assembly>.dll. Empty = not set (App Service looks for the published assembly itself). Set it once the assembly name is known')
 param appCommandLine string = ''
 
-@description('Opens the site to the plan\'s own outbound addresses (the admin app on the same plan) and to allowedInboundCidrs. False: every inbound request is refused, which is the state until the code is deployed and tested')
+@description('Opens the site to the App Service integration subnet (the admin app, Studio web and the APIs on the same plan), to the plan\'s own outbound addresses and to allowedInboundCidrs. False: every inbound request is refused, which is the state until the code is deployed and tested')
 param studioInboundOpen bool = false
 
 @description('Additional CIDRs allowed in when studioInboundOpen is true (studio-web, later). /32 for a single address')
@@ -99,11 +99,22 @@ var studioApiTags = union(
   { '${appInsightsLinkTag}': replace(studioApiInsights.id, 'Microsoft.Insights', 'microsoft.insights') }
 )
 
-// Who may call the API once it is open. The admin app runs on the same plan, so its outbound addresses are the plan's;
-// that also lets the Data API and Auth API in, which is accepted. The X-Studio-Api-Key / X-Studio-Admin-Key headers stay
-// the authentication: these rules only narrow who can try.
+// Who may call the API once it is open. The admin app, Studio web, the Data API and the Auth API run on the same plan and are
+// integrated into the same subnet with Route All, so their requests to this site's public name leave through the VNet: the site
+// sees the subnet, not one of the plan's outbound addresses. The subnet has the Microsoft.Web service endpoint, so a rule can name
+// it (the first rule). The plan's outbound addresses stay as the second way in, for a caller that does not route through the VNet.
+// Either way the Data API and Auth API get in too, which is accepted. The X-Studio-Api-Key / X-Studio-Admin-Key headers stay the
+// authentication: these rules only narrow who can try.
 var planOutboundAddresses = split(adminApp.properties.possibleOutboundIpAddresses, ',')
 var inboundAllowRules = concat(
+  [
+    {
+      name: 'Allow-AppService-Subnet'
+      priority: 90
+      action: 'Allow'
+      vnetSubnetResourceId: appServiceSubnet.id
+    }
+  ],
   map(range(0, length(planOutboundAddresses)), i => {
     name: 'Allow-Plan-Outbound-${padLeft(string(i + 1), 2, '0')}'
     priority: 100 + i

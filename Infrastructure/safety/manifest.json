@@ -548,7 +548,12 @@
           "status": "active"
         }
       },
-      "id-gha-invi-studio-api-prod-001": {},
+      "id-gha-invi-studio-api-prod-001": {
+        "github-production": {
+          "subject": "repo:CetchApp/cetchapp-onboarding-api:environment:production",
+          "status": "declared"
+        }
+      },
       "id-gha-invi-studio-prod-001": {
         "github-production": {
           "subject": "repo:CetchApp@262199775/invi-studio@1305967652:environment:production",
@@ -864,7 +869,7 @@
         {
           "type": "Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials",
           "name": "id-gha-invi-studio-api-prod-001/github-production",
-          "why": "only once githubRepository is set (phase 2); add the credential and its subject to identities.known in the same PR"
+          "why": "githubRepository is set (CetchApp/cetchapp-onboarding-api), so the first deployment creates the credential for its production environment; its subject is in identities.known"
         }
       ],
       "allowedUnsupported": [],
