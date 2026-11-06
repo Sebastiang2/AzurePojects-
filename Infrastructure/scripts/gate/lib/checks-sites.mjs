@@ -26,6 +26,25 @@ const sameSettingValue = (a, b) => {
 //   whatif: true                               a what-if path (glob) of a resource type          (whatif.mjs)
 // Each entry carries a `why`; the approver reads it in the report.
 
+/**
+ * The SSL state a hostname has live, and where that was read.
+ *
+ * ARM leaves `sslState` (and `thumbprint`) out of a hostNameBindings resource that has no certificate bound. Read on 2026-11-06 for
+ * studio.invi.lol after studio-web-c-domain: the binding came back without the property on api-version 2022-09-01, 2023-12-01 and
+ * 2024-04-01, while the site's own `hostNameSslStates` list reported `sslState: Disabled`, `thumbprint: null` for the same host. The binding's own value
+ * wins when it is there; otherwise the site's list is the evidence. Nothing is guessed: when both are silent the state is `undefined`, and when they
+ * disagree there is no state and `conflict` says why. Callers compare against `state` only, so unknown evidence never equals a wanted value.
+ */
+export function liveBindingSslState(app, host) {
+  const binding = (app?.hostnamebindings?.value ?? []).find((b) => lc(tail(b.name)) === lc(host));
+  const own = binding?.properties?.sslState ?? undefined;
+  const listed = (app?.show?.hostNameSslStates ?? []).find((s) => lc(s?.name) === lc(host))?.sslState ?? undefined;
+  if (own !== undefined && listed !== undefined && lc(own) !== lc(listed)) return { state: undefined, conflict: { binding: own, site: listed } };
+  if (own !== undefined) return { state: own, source: "the binding" };
+  if (listed !== undefined) return { state: listed, source: "the site's hostNameSslStates" };
+  return { state: undefined };
+}
+
 /** An allowed-change entry matches on resource, property and (when given) the exact before/after values. */
 function allowedChange(deployment, resource, property, before, after) {
   return (deployment.allowedChanges ?? []).find(
@@ -401,14 +420,20 @@ export function checkHostBindings(ctx) {
       continue;
     }
     const lp = current.properties ?? {};
-    if (p.sslState !== undefined && lc(p.sslState) !== lc(lp.sslState)) {
+    // The live state comes from the binding, or from the site's hostNameSslStates when ARM leaves it out of a binding without a certificate
+    // (see liveBindingSslState). Unknown stays unknown: it does not equal "Disabled" and no manifest `before` matches it.
+    const liveSsl = liveBindingSslState(live.apps[siteName], host);
+    if (liveSsl.conflict) {
+      findings.fail("BINDING-SSL-EVIDENCE", `${siteName}/${host}`, `the live SSL state of ${host} is contradictory: the binding says ${liveSsl.conflict.binding}, the site's hostNameSslStates says ${liveSsl.conflict.site}`);
+    } else if (p.sslState !== undefined && lc(p.sslState) !== lc(liveSsl.state)) {
       // Enabling SNI on a bound hostname is the point of a TLS deployment (studio-web-d-domain-tls), so the manifest can approve exactly
       // that transition for exactly this binding: { resource: "<site>/<host>", property: "sslState", before, after, why }.
-      const allowance = allowedChange(ctx.deployment, `${siteName}/${host}`, "sslState", lp.sslState, p.sslState);
+      const shownLive = liveSsl.state ?? "unknown (neither the binding nor hostNameSslStates reports it)";
+      const allowance = allowedChange(ctx.deployment, `${siteName}/${host}`, "sslState", liveSsl.state, p.sslState);
       if (allowance) {
-        findings.allowed("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState ${lp.sslState} -> ${p.sslState} (${allowance.why ?? "listed in manifest"})`);
+        findings.allowed("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState ${shownLive} -> ${p.sslState} (${allowance.why ?? "listed in manifest"})`);
       } else {
-        findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${lp.sslState} to ${p.sslState}`);
+        findings.fail("BINDING-SSL-CHANGE", `${siteName}/${host}`, `sslState would change from ${shownLive} to ${p.sslState}`);
       }
     }
     if (p.hostNameType !== undefined && lc(p.hostNameType) !== lc(lp.hostNameType)) {
