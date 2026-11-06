@@ -78,6 +78,16 @@ resource vnet 'Microsoft.Network/virtualNetworks@2023-02-01' = {
           networkSecurityGroup: {
             id: appNsgId
           }
+          // The live subnet has this service endpoint (locations *) already. It is declared here so that a deployment of main.bicep
+          // does not remove it: the Studio API admits the callers of this subnet by it (modules/studioapi.bicep, rule Allow-AppService-Subnet).
+          serviceEndpoints: [
+            {
+              service: 'Microsoft.Web'
+              locations: [
+                '*'
+              ]
+            }
+          ]
           delegations: [
             {
               name: 'appservice-delegation'

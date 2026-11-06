@@ -77,3 +77,41 @@ test("the collector skips a site only when the listing and the site itself both 
   assert.match(collector, /show_not_found "apps\/\$app\.absent" az webapp show/);
   assert.match(collector, /ResourceNotFound\|could not be found\|was not found/);
 });
+
+test("the site admits the App Service integration subnet by its service endpoint, first in the list, and is still closed by default", () => {
+  assert.match(studio, /var inboundAllowRules = concat\(\s*\[\s*\{\s*name: 'Allow-AppService-Subnet'\s*priority: 90\s*action: 'Allow'\s*vnetSubnetResourceId: appServiceSubnet\.id\s*\}\s*\]/);
+  assert.match(studio, /var appServiceSubnetName = 'snet-appservice-integration'/);
+  assert.match(studio, /ipSecurityRestrictions: studioInboundOpen \? inboundAllowRules : \[\]/, "the rules are only used when the site is opened");
+  assert.match(studio, /ipSecurityRestrictionsDefaultAction: 'Deny'/);
+  assert.match(params, /^param studioInboundOpen = false$/m);
+});
+
+test("the network module declares the Microsoft.Web service endpoint that the subnet rule relies on", () => {
+  const network = read("modules/network.bicep");
+  const subnet = /name: 'snet-appservice-integration'[\s\S]*?\n      \}\n/.exec(network)?.[0] ?? "";
+  assert.match(subnet, /serviceEndpoints: \[\s*\{\s*service: 'Microsoft\.Web'\s*locations: \[\s*'\*'\s*\]\s*\}\s*\]/, "without it a deployment of main.bicep removes the endpoint the live subnet has");
+  assert.match(subnet, /serviceName: 'Microsoft\.Web\/serverFarms'/, "the endpoint is on the delegated App Service integration subnet");
+});
+
+test("phase 2 is set: startup command, deploy repository (plain OIDC subject) and ADMIN_ACCESS_MODE=enforce", () => {
+  const code = params.replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /^param appCommandLine = 'dotnet invi-studio-api\.dll'$/m);
+  assert.match(code, /^param githubRepository = 'CetchApp\/cetchapp-onboarding-api'$/m);
+  assert.match(code, /ADMIN_ACCESS_MODE: 'enforce'/);
+  // The credential the module builds for that repository is the one reviewed in the manifest: a mismatch is an AADSTS700213 at the first deployment.
+  const repository = /^param githubRepository = '([^']+)'$/m.exec(code)[1];
+  const environment = /param githubEnvironment string = '([^']+)'/.exec(studio)[1];
+  assert.equal(manifest.identities.known["id-gha-invi-studio-api-prod-001"]["github-production"].subject, `repo:${repository}:environment:${environment}`);
+  // The opt-in lock-down of the shared Render service and the e-mail flow (Studio web has it off) are not switched on here.
+  for (const name of ["STUDIO_SERVER_ONLY", "ADMIN_ROUTES_ENABLED", "STUDIO_REQUIRE_EMAIL"]) assert.doesNotMatch(code, new RegExp(name), `${name} stays absent`);
+});
+
+test("the database is the production one: the Core DB on the production server, with the production activity creator", () => {
+  const code = params.replace(/^\s*\/\/.*$/gm, "");
+  assert.match(code, /^param databaseName = 'invi'$/m);
+  assert.match(code, /^param databaseUser = 'inviadmin'$/m);
+  assert.match(code, /^param activityCreatorId = 1636$/m, "never the test creator 657");
+  assert.match(studio, /ONBOARDING_DB_HOST: mysqlServer\.properties\.fullyQualifiedDomainName/);
+  assert.match(studio, /var mysqlServerName = 'mysql-\$\{workloadName\}-\$\{environment\}-\$\{instance\}'/);
+  assert.match(studio, /ONBOARDING_DB_SSL_MODE: 'Required'/);
+});
