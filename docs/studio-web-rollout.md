@@ -83,6 +83,7 @@ The database track has its own approvals and sits inside "The Studio API on Azur
 
 - **Opening the main site (step 11).** DNS is at Namecheap, so there is no Cloudflare in front of Studio and the Data API's origin lock cannot be copied. The decision is whether the public launch is an open site (recommended, implemented as deployment E) or waits for something in front of it. Until E is applied the site is closed, also for customers.
 - **Who is exempt from payment, and when Stripe opens.** Until then only exempt organizers publish paid content.
+- **How a Studio sign-up is approved in production.** A business that signs up in Studio is created inactive (hidden in the Invi app) and shows in the admin panel's list «Venter godkjenning». The production panel (Easy Auth, reading through the Data API) has no approve action that works: its approve button calls the onboarding API from the browser, an address the production build does not have, and that route needs the admin key (`ADMIN_ACCESS_MODE=enforce`). What does work today is the invited account: the panel creates the organizer and its Studio login. Until an approve action exists, either the public sign-up page is not offered at launch, or sign-ups wait. Either an approve action in the Data API's admin surface with a route in the panel, or a same-origin route in the panel that adds `X-Studio-Admin-Key`, closes it; both are the panel owner's change.
 
 ## The Studio API on Azure
 
