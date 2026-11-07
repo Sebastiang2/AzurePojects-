@@ -10,7 +10,7 @@
 //   live/          production state collected by collect-live.sh (names and non-secret values only)
 //
 // Exit code: 0 = PASS, 1 = FAIL (at least one blocking finding), 2 = the gate could not run (also a failure for deploy).
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, realpathSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Findings, canonical, readJson, sha256, lc } from "./lib/util.mjs";
@@ -261,7 +261,12 @@ export function toMarkdown(report) {
 }
 
 // CLI ---------------------------------------------------------------------------------------------------------------
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Real paths on both sides: where the script is reached through a symlink (macOS: /var -> /private/var), import.meta.url is the resolved path and
+// process.argv[1] is not, and the script would silently do nothing (a post-deployment check that verifies no app at all).
+function runAsScript() {
+  try { return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href; } catch { return false; }
+}
+if (runAsScript()) {
   const args = parseArgs(process.argv.slice(2));
   if (!args.work || !args.manifest || !args.deployment) {
     console.error("usage: analyze.mjs --work <dir> --manifest <file> --deployment <key> [--out report.json] [--md report.md]");

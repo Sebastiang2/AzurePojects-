@@ -322,7 +322,7 @@ test("a real deploy.sh run without a terminal refuses before it does anything", 
 // runs the REAL tail of deploy.sh (from step 6 to the end) against a stub `az` that writes CRLF, with the gate stubbed out.
 const deployScript = join(scriptsDir, "deploy.sh");
 
-function runDeployTail({ deployState = "Succeeded", appState = "Running", gateExit = 0 }) {
+function runDeployTail({ deployState = "Succeeded", appState = "Running", gateExit = 0, manifestApps = { "app-one": {}, "app-two": { introducedBy: "some-other-deployment" } } }) {
   const source = readFileSync(deployScript, "utf8").replace(/\r\n/g, "\n");
   const start = source.indexOf("\n# ---- 6. deploy");
   assert.ok(start > 0, "deploy.sh no longer has the step 6 marker this test cuts at");
@@ -336,7 +336,7 @@ function runDeployTail({ deployState = "Succeeded", appState = "Running", gateEx
     copyFileSync(join(gateDir, "apps-to-verify.mjs"), join(here, "gate", "apps-to-verify.mjs"));
     writeFileSync(join(here, "preflight.sh"), '#!/usr/bin/env bash\ntouch "$(dirname "${BASH_SOURCE[0]}")/post-deploy-gate-ran"\nexit "${STUB_GATE_EXIT:-0}"\n', { mode: 0o755 });
     // app-two is declared by ANOTHER deployment but exists: it is verified only when the site list is parsed correctly
-    writeFileSync(join(here, "manifest.json"), JSON.stringify({ apps: { "app-one": {}, "app-two": { introducedBy: "some-other-deployment" } } }));
+    writeFileSync(join(here, "manifest.json"), JSON.stringify({ apps: manifestApps }));
     const bin = join(dir, "bin");
     mkdirSync(bin);
     writeFileSync(join(bin, "az"), [
@@ -411,6 +411,12 @@ test("deploy.sh: the CRLF handling does not loosen the gate: a state other than 
   const stopped = runDeployTail({ appState: "Stopped" });
   assert.equal(stopped.status, 1, stopped.out);
   assert.match(stopped.out, /is not running/);
+});
+
+test("deploy.sh: a post-deployment verification that selects no app fails instead of passing (fail closed)", { skip: !haveBash }, () => {
+  const none = runDeployTail({ manifestApps: {} });
+  assert.equal(none.status, 1, none.out);
+  assert.match(none.out, /no app was selected for the post-deployment verification/);
 });
 
 // ---- verify-secure-parameters.sh (operator-run; tested against a stub `az`, never against Azure) -------------------------

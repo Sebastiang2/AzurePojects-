@@ -293,7 +293,10 @@ else
   EXISTING_SITES="*"
 fi
 
-for app in $(node "$(to_native "$HERE/gate/apps-to-verify.mjs")" "$MANIFEST_N" "$DEPLOYMENT" $EXISTING_SITES); do
+# Fail closed: a script that prints nothing (for example because it could not tell it was started as a script) must not mean "nothing to verify".
+APPS_TO_VERIFY="$(node "$(to_native "$HERE/gate/apps-to-verify.mjs")" "$MANIFEST_N" "$DEPLOYMENT" $EXISTING_SITES)" || { echo "ERROR: could not select the apps to verify." >&2; exit 1; }
+[ -n "${APPS_TO_VERIFY//[[:space:]]/}" ] || { echo "ERROR: no app was selected for the post-deployment verification, which would verify nothing." >&2; exit 1; }
+for app in $APPS_TO_VERIFY; do
   state="$(az webapp show --resource-group "$RG" --name "$app" --subscription "$SUB" --query state --output tsv --only-show-errors 2>/dev/null || echo unknown)"
   state="${state//$'\r'/}"
   echo "App $app: $state"
