@@ -63,7 +63,7 @@ param databaseName string
 @description('MySQL login. The administrator today, as for the APIs; StudioTablesStartup needs CREATE and ALTER')
 param databaseUser string
 
-@description('App Settings that are Key Vault references: each setting and the secret it points to. Every secret named here has to exist and be listed in prod.studioapi.rbac-owner.bicepparam, or the reference does not resolve and the app gets the literal reference string as value')
+@description('App Settings that come from Key Vault: each setting and the secret it points to. Each becomes a Key Vault reference AND an entry of KEY_VAULT_MAP, which the API itself reads at start-up (the platform does not resolve references for the apps on this plan). Every secret named here has to exist and be listed in prod.studioapi.rbac-owner.bicepparam, or neither way gets a value')
 param keyVaultReferences keyVaultReference[]
 
 @description('Non-secret App Settings (name -> string value): RESERVATION_*, MAILBOX_*, FACEBOOK_*, models, senders, Cors__AllowedOrigins__n. Empty values are not set, so the app uses its own defaults. An invalid RESERVATION_* value stops the app at startup')
@@ -81,6 +81,11 @@ param githubEnvironment string = 'production'
 
 var appServicePlanName = 'asp-${workloadName}-${environment}-${instance}'
 var keyVaultName = 'kv-${workloadName}-${environment}-${instance}'
+// The API reads these secrets itself at start-up (KeyVaultSecrets, KEY_VAULT_URI and KEY_VAULT_MAP), through the private endpoint with its
+// system identity, as the Data API, the Auth API, the admin app and Studio web do: App Service does not resolve the references below
+// against this vault for the apps on this plan ("Reference was not able to be resolved"). The references stay, so the setting is right
+// if the platform does resolve them; the API leaves a usable value alone and replaces a literal reference text.
+var keyVaultUri = 'https://${keyVaultName}${az.environment().suffixes.keyvaultDns}/'
 var logAnalyticsName = 'log-${workloadName}-${environment}-${instance}'
 var vnetName = 'vnet-${workloadName}-${environment}-${instance}'
 var appServiceSubnetName = 'snet-appservice-integration'
@@ -243,8 +248,8 @@ resource studioApi 'Microsoft.Web/sites@2024-11-01' = {
   }
 }
 
-// Application settings. The app reads plain environment variables; secrets are Key Vault references, resolved by App
-// Service. Not set on purpose:
+// Application settings. The app reads plain environment variables; secrets are Key Vault references that the API also loads itself
+// (KEY_VAULT_URI, KEY_VAULT_MAP; needs the onboarding code with KeyVaultSecrets). Not set on purpose:
 //   - ENABLE_SWAGGER: Swagger stays off in Production
 //   - PORT / WEBSITES_PORT: a code deployment gets its port from App Service
 // No .env file is read in Azure, so everything the app needs is here.
@@ -266,6 +271,10 @@ resource studioApiAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
 
       // Without it every Studio resource answers 503 outside Development.
       STUDIO_RESOURCES_ENABLED: 'true'
+
+      // Neither is secret. Without the code that reads them (KeyVaultSecrets) they do nothing.
+      KEY_VAULT_URI: keyVaultUri
+      KEY_VAULT_MAP: join(map(keyVaultReferences, reference => '${reference.secretName}:${reference.setting}'), ';')
 
       APPLICATIONINSIGHTS_CONNECTION_STRING: studioApiInsights.properties.ConnectionString
       ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
