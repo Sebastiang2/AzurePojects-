@@ -48,8 +48,12 @@ test("production URLs, Render API and origin settings are explicit", () => {
     "ONBOARDING_API_BASE_URL: 'https://invi-studio-api.onrender.com'",
     "STUDIO_PUBLIC_URL: 'https://studio.invi.lol'",
     "STUDIO_PUBLIC_ORIGIN: 'https://studio.invi.lol'",
+    "STUDIO_PILOT_ORGANIZER_IDS: '90,91'",
   ]) assert.match(params, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(params, /STUDIO_BILLING_PREVIEW|STUDIO_BILLING_EXEMPT/);
+  const pilot = manifest.apps["app-invi-studio-prod-001"];
+  assert.ok(pilot.required.includes("STUDIO_PILOT_ORGANIZER_IDS"));
+  assert.equal(pilot.mustEqual.STUDIO_PILOT_ORGANIZER_IDS, "90,91");
 });
 
 test("secrets load in-process from the private vault with per-secret RBAC", () => {

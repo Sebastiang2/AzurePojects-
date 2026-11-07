@@ -114,6 +114,7 @@
         "STUDIO_PUBLIC_URL",
         "STUDIO_PUBLIC_ORIGIN",
         "STUDIO_REQUIRE_EMAIL",
+        "STUDIO_PILOT_ORGANIZER_IDS",
         "KEY_VAULT_URI",
         "KEY_VAULT_MAP"
       ],
@@ -126,6 +127,7 @@
         "STUDIO_PUBLIC_URL": "https://studio.invi.lol",
         "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
         "STUDIO_REQUIRE_EMAIL": "false",
+        "STUDIO_PILOT_ORGANIZER_IDS": "90,91",
         "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET;studio-google-places-api-key:GOOGLE_PLACES_API_KEY;openai-api-key:OPENAI_API_KEY"
       },
       "introducedBy": "studio-web-a"
