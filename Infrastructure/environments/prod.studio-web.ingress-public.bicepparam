@@ -34,6 +34,8 @@ param appSettings = {
   STUDIO_PUBLIC_URL: 'https://studio.invi.lol'
   STUDIO_PUBLIC_ORIGIN: 'https://studio.invi.lol'
   STUDIO_REQUIRE_EMAIL: 'false'
+  // Render/Aiven synthetic pilot: signed-in organizers outside this list are denied.
+  STUDIO_PILOT_ORGANIZER_IDS: '90,91'
 }
 
 // These names are metadata. Values stay in Key Vault. The API must use the same studio-api-key value.
