@@ -9,7 +9,7 @@
 //   - for config resources that carry secrets (app settings, connection strings, auth settings, storage mounts ...): the
 //     property NAMES only, never a value, whatever the value looks like
 // Exit codes: 0 = parsed; 2 = not JSON / not a what-if result.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { looksSecret } from "./lib/secrets.mjs";
@@ -112,7 +112,12 @@ export function stripCliNotice(text) {
 }
 
 // CLI: node summarize-whatif.mjs [outfile]   (stdin = raw what-if JSON; stdout = summary unless outfile is given)
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+// Real paths on both sides: where the script is reached through a symlink (macOS: /var -> /private/var), import.meta.url is the resolved path and
+// process.argv[1] is not, and the script would silently do nothing (a post-deployment check that verifies no app at all).
+function runAsScript() {
+  try { return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href; } catch { return false; }
+}
+if (runAsScript()) {
   let parsed;
   try {
     parsed = JSON.parse(stripCliNotice(readFileSync(0, "utf8")));
