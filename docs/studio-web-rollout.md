@@ -127,9 +127,17 @@ Then step 11 and E. Rollback of the switch: put the old `ONBOARDING_API_BASE_URL
 
 `studio-web-e-ingress-public` deploys the same template as A with `ingressMode = 'public'` (`prod.studio-web.ingress-public.bicepparam`). The default action of the main site becomes `Allow`, still with no rule list. Nothing else of this app changes, and no other site, the plan, SCM or any other service is touched. `ingressMode` is `closed` by default: a parameter that is left out renders exactly what deployment A rendered, and any value other than `closed` or `public` does not compile.
 
+### The pilot rules go first (decided 2026-11-10)
+
+During the closed pilot, Allow rules for single tester addresses were added to the main site by hand. They are not in Bicep (addresses identify people and this repository is public), and the template declares an empty rule list, so the gate refuses the public step while any of them exists (`ACCESS-RULE-REMOVED`). They are removed by hand, one `az webapp config access-restriction remove --rule-name <name>` per rule, immediately before the public step and in the same window. Between the two the site is closed to everyone, which is the state of deployment A. Read the rule list back afterwards: only the implicit `Deny all` may remain, and SCM must be unchanged.
+
+The organizer allowlist of the pilot (`STUDIO_PILOT_ORGANIZER_IDS`) also gained an organizer by hand. The public step sets it back to the declared value through a one-time manifest entry; remove that entry after the deployment.
+
+After the public step, `prod.studio-web.ingress-public.bicepparam` is the file that describes production. Later changes to Studio web, such as the switch to the Azure Studio API, deploy with `studio-web-e-ingress-public`. Deployment A would close the site again, and the gate refuses that change.
+
 | Key | Parameter file | Effect | What the gate allows |
 | --- | --- | --- | --- |
-| `studio-web-e-ingress-public` | `prod.studio-web.ingress-public.bicepparam` | `Deny` to `Allow` | `siteConfig.ipSecurityRestrictionsDefaultAction` of `app-invi-studio-prod-001`, `Deny` to `Allow`, offline and in the what-if |
+| `studio-web-e-ingress-public` | `prod.studio-web.ingress-public.bicepparam` | `Deny` to `Allow` | `siteConfig.ipSecurityRestrictionsDefaultAction` of `app-invi-studio-prod-001`, `Deny` to `Allow`, offline and in the what-if; once, `STUDIO_PILOT_ORGANIZER_IDS` back to its declared value |
 | `studio-web-e-ingress-close` (rollback) | `prod.studio-web.bicepparam` (the file of A) | `Allow` to `Deny` | the opposite change, for the same site only |
 
 Checked offline: the two parameter files render (`az bicep snapshot`) with exactly one difference, that property; the gate approves the change only with its own manifest entry, in one direction, for this site. The what-if of a real deployment shows the same single property; the unchanged app-settings bag is read by the live comparison of the gate, not by what-if.

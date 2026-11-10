@@ -167,9 +167,10 @@ test("the ingress deployments are Studio-only, change one property and have a ro
     assert.deepEqual(deployment.touches, a.touches, "the same resources as deployment A, no others");
     assert.deepEqual([deployment.allowedCreates, deployment.allowedUnsupported], [[], []]);
     assert.deepEqual([deployment.allowedNewSettings, deployment.allowedRemovedSettings], [{}, {}]);
-    assert.equal(deployment.allowedChanges.length, 2);
     for (const change of deployment.allowedChanges) assert.match(change.resource, /^app-invi-studio-prod-001$/);
-    const [live, whatif] = deployment.allowedChanges;
+    const core = deployment.allowedChanges.filter((change) => !String(change.property).startsWith("setting:"));
+    assert.equal(core.length, 2, "the default action only, live and in the what-if");
+    const [live, whatif] = core;
     assert.equal(live.property, "siteConfig.ipSecurityRestrictionsDefaultAction");
     assert.deepEqual([whatif.whatif, whatif.type, whatif.property], [true, "Microsoft.Web/sites", "properties.siteConfig.ipSecurityRestrictionsDefaultAction"]);
   }
@@ -178,6 +179,16 @@ test("the ingress deployments are Studio-only, change one property and have a ro
   assert.equal(close.parameters, a.parameters, "the rollback is the closed file of deployment A");
   assert.deepEqual([close.allowedChanges[0].before, close.allowedChanges[0].after], ["Allow", "Deny"]);
   assert.notEqual(pub.deploymentName, close.deploymentName);
+  // The one setting the public step may also change: the pilot organizer list, and only to the value its parameter file declares
+  // (a hand-made addition live is dropped, never one added). The rollback changes no setting.
+  assert.equal(close.allowedChanges.filter((change) => String(change.property).startsWith("setting:")).length, 0);
+  const declaredPilot = /STUDIO_PILOT_ORGANIZER_IDS:\s*'([^']*)'/.exec(publicParams)?.[1];
+  for (const change of pub.allowedChanges.filter((c) => String(c.property).startsWith("setting:"))) {
+    assert.equal(change.property, "setting:STUDIO_PILOT_ORGANIZER_IDS");
+    assert.equal(change.after, declaredPilot);
+    const before = new Set(String(change.before).split(","));
+    assert.ok(declaredPilot.split(",").every((id) => before.has(id)), "the change only removes organizers from the live list");
+  }
 });
 
 // The templates are evaluated offline (no deployment, no Azure call), like mysql-server-mode.test.mjs. Skipped when neither

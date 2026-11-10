@@ -1207,6 +1207,13 @@
           "resource": "app-invi-studio-prod-001",
           "property": "properties.siteConfig.ipSecurityRestrictionsDefaultAction",
           "why": "reviewed public launch of studio.invi.lol: the main site of this app only; SCM, the plan and every other site keep their rules"
+        },
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "setting:STUDIO_PILOT_ORGANIZER_IDS",
+          "before": "90,91,30",
+          "after": "90,91",
+          "why": "organizer 30 was added to the pilot list by hand, outside Bicep; the owner decided on 2026-11-10 to remove it when the site opens. One-time: remove this entry after the deployment"
         }
       ],
       "residualRisks": [
