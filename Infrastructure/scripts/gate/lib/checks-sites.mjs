@@ -101,7 +101,11 @@ export function checkSites(ctx) {
     compareValue(ctx, name, "httpsOnly", p.httpsOnly, l.show.httpsOnly);
     compareValue(ctx, name, "publicNetworkAccess", p.publicNetworkAccess, l.show.publicNetworkAccess);
     compareValue(ctx, name, "clientAffinityEnabled", p.clientAffinityEnabled, l.show.clientAffinityEnabled);
-    if (p.serverFarmId !== undefined) compareValue(ctx, name, "serverFarm", tail(p.serverFarmId), tail(l.show.serverFarmId));
+    // Azure CLI 2.82 leaves serverFarmId out of `az webapp show` and returns the plan as appServicePlanId. Neither present still
+    // compares as "" and fails.
+    if (p.serverFarmId !== undefined) {
+      compareValue(ctx, name, "serverFarm", tail(p.serverFarmId), tail(l.show.serverFarmId ?? l.show.appServicePlanId));
+    }
     if (p.virtualNetworkSubnetId !== undefined) {
       compareValue(ctx, name, "virtualNetworkSubnet", tail(p.virtualNetworkSubnetId), tail(l.show.virtualNetworkSubnetId));
     }
@@ -143,7 +147,8 @@ function ruleName(rule) {
   return rule.name ?? rule.ruleName ?? `${rule.action}:${rule.ip_address ?? rule.ipAddress ?? rule.tag ?? ""}`;
 }
 
-const accessRuleKey = (rule) => `${lc(rule.action)}|${Number(rule.priority)}|${lc(rule.ipAddress ?? rule.ip_address)}|${lc(rule.tag)}|${JSON.stringify(rule.headers ?? {})}`;
+// A rule declared without a tag is an IP rule, and Azure returns it with tag "Default": both read as Default here.
+const accessRuleKey = (rule) => `${lc(rule.action)}|${Number(rule.priority)}|${lc(rule.ipAddress ?? rule.ip_address)}|${lc(rule.tag ?? "Default")}|${JSON.stringify(rule.headers ?? {})}`;
 
 function approvedOriginRule(ctx, siteName, declared, rule) {
   const lock = ctx.deployment.originLock;
@@ -162,15 +167,38 @@ export function originLockTransition(ctx, siteName) {
   if (!Array.isArray(want) || !live?.config) return null;
   const current = (live.accessrestrictions?.ipSecurityRestrictions ?? live.config.ipSecurityRestrictions ?? [])
     .filter((r) => Number(r.priority) !== 2147483647);
-  const expected = lock.rules;
-  const complete = (rules) => rules.length === expected.length && new Set(rules.map((r) => lc(ruleName(r)))).size === expected.length &&
-    rules.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r));
+  const complete = (rules) => isExactOriginLock(ctx, siteName, rules);
   const liveDefault = live.config.ipSecurityRestrictionsDefaultAction ?? ctx.manifest.defaults?.siteConfig?.ipSecurityRestrictionsDefaultAction;
   if (current.length === 0 && complete(want) && lc(liveDefault) === "allow" && lc(sc.ipSecurityRestrictionsDefaultAction) === "deny") return "enable";
   if (want.length === 0 && current.length > 0 && new Set(current.map((r) => lc(ruleName(r)))).size === current.length &&
     current.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r)) &&
     lc(liveDefault) === "deny" && lc(sc.ipSecurityRestrictionsDefaultAction) === "allow") return "rollback";
   return null;
+}
+
+/** Exactly the manifest's origin-lock rules: the same count, unique names, and each one's action, priority and address. */
+function isExactOriginLock(ctx, siteName, rules) {
+  const expected = ctx.deployment.originLock.rules;
+  return rules.length === expected.length && new Set(rules.map((r) => lc(ruleName(r)))).size === expected.length &&
+    rules.every((r) => approvedOriginRule(ctx, siteName, "ipSecurityRestrictions", r));
+}
+
+/**
+ * The origin lock is already live and declared unchanged: live and declared main-site rules are both exactly the manifest's
+ * rules, and the default is Deny live and declared. what-if cannot read siteConfig, so it reports the declared list and default
+ * as Create on every deployment; in this state that writes nothing. Not a transition: originLockTransition stays null, so a
+ * full main deployment that would enable or roll back the lock is still refused.
+ */
+export function originLockSteady(ctx, siteName) {
+  const lock = ctx.deployment.originLock;
+  if (lc(lock?.resource) !== lc(siteName) || !Array.isArray(lock?.rules)) return false;
+  const sc = ctx.desired.find("Microsoft.Web/sites", siteName)?.properties?.siteConfig;
+  const live = ctx.live.apps[siteName];
+  if (!Array.isArray(sc?.ipSecurityRestrictions) || !live?.config) return false;
+  const current = (live.accessrestrictions?.ipSecurityRestrictions ?? live.config.ipSecurityRestrictions ?? [])
+    .filter((r) => Number(r.priority) !== 2147483647);
+  return isExactOriginLock(ctx, siteName, sc.ipSecurityRestrictions) && isExactOriginLock(ctx, siteName, current) &&
+    lc(live.config.ipSecurityRestrictionsDefaultAction) === "deny" && lc(sc.ipSecurityRestrictionsDefaultAction) === "deny";
 }
 
 

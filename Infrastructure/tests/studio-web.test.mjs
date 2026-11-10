@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { evaluateSnapshot, haveSnapshot } from "./bicep-snapshot.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const app = read("modules/studio-web.bicep");
@@ -180,9 +180,9 @@ test("the ingress deployments are Studio-only, change one property and have a ro
   assert.notEqual(pub.deploymentName, close.deploymentName);
 });
 
-// The templates are evaluated offline (`az bicep snapshot`: no deployment, no Azure call), like mysql-server-mode.test.mjs. Skipped
-// when the Azure CLI or Bicep is not installed.
-const haveBicep = spawnSync("az", ["bicep", "version"], { shell: process.platform === "win32", encoding: "utf8" }).status === 0;
+// The templates are evaluated offline (no deployment, no Azure call), like mysql-server-mode.test.mjs. Skipped when neither
+// `az bicep snapshot` nor the Bicep CLI is installed.
+const haveBicep = haveSnapshot;
 
 function render(files) {
   const dir = mkdtempSync(join(tmpdir(), "studio-web-ingress-"));
@@ -194,14 +194,7 @@ function render(files) {
     for (const [name, text] of Object.entries(files)) {
       const file = join(dir, "environments", `${name}.bicepparam`);
       writeFileSync(file, text);
-      const run = spawnSync(
-        "az",
-        ["bicep", "snapshot", "--file", file, "--subscription-id", "00000000-0000-0000-0000-000000000000", "--resource-group", "rg-test", "--location", "swedencentral", "--only-show-errors"],
-        { shell: process.platform === "win32", encoding: "utf8" },
-      );
-      results[name] = run.status === 0
-        ? { ok: true, resources: JSON.parse(readFileSync(file.replace(/\.bicepparam$/, ".snapshot.json"), "utf8")).predictedResources }
-        : { ok: false, error: `${run.stdout}${run.stderr}` };
+      results[name] = evaluateSnapshot(file);
     }
     return results;
   } finally {

@@ -5,7 +5,7 @@
 //   update    the server without administratorLogin and administratorLoginPassword
 //   create    the server with both
 //
-// Skipped when the Azure CLI or Bicep is not installed. Run:
+// Skipped when neither `az bicep snapshot` nor the Bicep CLI is installed. Run:
 //   node --test Infrastructure/tests/mysql-server-mode.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,24 +14,19 @@ import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { evaluateSnapshot, haveSnapshot } from "./bicep-snapshot.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const infra = join(here, "..");
 const SUBSCRIPTION = "00000000-0000-0000-0000-000000000000";
 const TYPE = "Microsoft.DBforMySQL/flexibleServers";
 
-const azVersion = spawnSync("az", ["bicep", "version"], { shell: process.platform === "win32", encoding: "utf8" });
-const haveBicep = azVersion.status === 0;
+const haveBicep = haveSnapshot;
 
 function snapshot(paramFile, env = {}) {
-  const r = spawnSync(
-    "az",
-    ["bicep", "snapshot", "--file", paramFile, "--subscription-id", SUBSCRIPTION, "--resource-group", "rg-test", "--location", "swedencentral", "--only-show-errors"],
-    { shell: process.platform === "win32", encoding: "utf8", env: { ...process.env, ...env } },
-  );
-  assert.equal(r.status, 0, `az bicep snapshot failed: ${r.stderr}`);
-  const out = paramFile.replace(/\.bicepparam$/, ".snapshot.json");
-  return JSON.parse(readFileSync(out, "utf8")).predictedResources ?? [];
+  const r = evaluateSnapshot(paramFile, { subscription: SUBSCRIPTION, env });
+  assert.ok(r.ok, `bicep snapshot failed: ${r.error}`);
+  return r.resources;
 }
 const servers = (resources) => resources.filter((r) => r.type === TYPE);
 const databases = (resources) => resources.filter((r) => r.type === `${TYPE}/databases`);
