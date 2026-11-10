@@ -131,6 +131,32 @@
         "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET;studio-google-places-api-key:GOOGLE_PLACES_API_KEY;openai-api-key:OPENAI_API_KEY"
       },
       "introducedBy": "studio-web-a"
+    },
+    "app-invi-studio-api-prod-001": {
+      "required": [
+        "ASPNETCORE_ENVIRONMENT",
+        "SCM_DO_BUILD_DURING_DEPLOYMENT",
+        "ONBOARDING_DB_HOST",
+        "ONBOARDING_DB_PORT",
+        "ONBOARDING_DB_DATABASE",
+        "ONBOARDING_DB_USER",
+        "ONBOARDING_DB_SSL_MODE",
+        "ONBOARDING_DB_PASSWORD",
+        "STUDIO_API_KEY",
+        "STUDIO_ADMIN_API_KEY",
+        "ADMIN_ACCESS_MODE",
+        "KEY_VAULT_URI",
+        "KEY_VAULT_MAP"
+      ],
+      "mustEqual": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
+        "ONBOARDING_DB_DATABASE": "invi",
+        "ONBOARDING_DB_SSL_MODE": "Required",
+        "ADMIN_ACCESS_MODE": "enforce",
+        "KEY_VAULT_MAP": "database-password:ONBOARDING_DB_PASSWORD;studio-api-key:STUDIO_API_KEY;studio-admin-api-key:STUDIO_ADMIN_API_KEY;resend-api-key:RESEND_API_KEY;openai-api-key:OPENAI_API_KEY"
+      },
+      "introducedBy": "studioapi-a"
     }
   },
   "noise": [
@@ -517,6 +543,54 @@
         "principalType": "ServicePrincipal",
         "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-studio-prod-001",
         "description": "id-gha-invi-studio-prod-001: Website Contributor on the Studio site only (GitHub OIDC deploy identity; modules/studio-web-rbac.bicep, deployment studio-web-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "e20321a5-40d1-591e-914e-ec31e827187c",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/database-password",
+        "description": "Studio API system identity: Secrets User on the shared secret database-password (modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "8f490694-7d6b-551d-9122-e9080de03b87",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-api-key",
+        "description": "Studio API system identity: Secrets User on the shared secret studio-api-key (modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "fe0a4cc3-026b-5ffc-806c-9b4bea1e4ba6",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-admin-api-key",
+        "description": "Studio API system identity: Secrets User on secret studio-admin-api-key (modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "7bc67e3b-e4c8-5f40-93eb-5956b95a2c3f",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/resend-api-key",
+        "description": "Studio API system identity: Secrets User on the shared secret resend-api-key (modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "f3af6d6a-7fc1-50b3-91ed-02c226d72cf5",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/openai-api-key",
+        "description": "Studio API system identity: Secrets User on the shared secret openai-api-key (modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
+        "status": "declared"
+      },
+      {
+        "name": "76fbdf72-c272-58e2-9d2c-08e7ef1c0fc7",
+        "role": "Website Contributor",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.Web/sites/app-invi-studio-api-prod-001",
+        "description": "id-gha-invi-studio-api-prod-001: Website Contributor on the Studio API site only (GitHub OIDC deploy identity; modules/studioapi-rbac.bicep, deployment studioapi-b-rbac)",
         "status": "declared"
       }
     ]
@@ -921,7 +995,38 @@
       "parameters": "Infrastructure/environments/prod.studioapi.rbac-owner.bicepparam",
       "deploymentName": "invi-prod-studioapi-rbac-001",
       "secureEnvironment": [],
-      "allowedCreates": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "e20321a5-40d1-591e-914e-ec31e827187c",
+          "why": "Key Vault Secrets User for the Studio API system identity on the shared secret database-password only (the same database and account as the Data API)"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "8f490694-7d6b-551d-9122-e9080de03b87",
+          "why": "Key Vault Secrets User for the Studio API system identity on the shared secret studio-api-key only (the key Studio web sends)"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "fe0a4cc3-026b-5ffc-806c-9b4bea1e4ba6",
+          "why": "Key Vault Secrets User for the Studio API system identity on secret studio-admin-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "7bc67e3b-e4c8-5f40-93eb-5956b95a2c3f",
+          "why": "Key Vault Secrets User for the Studio API system identity on the shared secret resend-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "f3af6d6a-7fc1-50b3-91ed-02c226d72cf5",
+          "why": "Key Vault Secrets User for the Studio API system identity on the shared secret openai-api-key only"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "76fbdf72-c272-58e2-9d2c-08e7ef1c0fc7",
+          "why": "Website Contributor for the GitHub OIDC deploy identity id-gha-invi-studio-api-prod-001 on app-invi-studio-api-prod-001 only"
+        }
+      ],
       "allowedUnsupported": [
         {
           "module": "secretAccess",
@@ -933,7 +1038,32 @@
       "allowedRemovedSettings": {},
       "allowedChanges": [],
       "residualRisks": [],
-      "touches": []
+      "touches": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "e20321a5-40d1-591e-914e-ec31e827187c"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "8f490694-7d6b-551d-9122-e9080de03b87"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "fe0a4cc3-026b-5ffc-806c-9b4bea1e4ba6"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "7bc67e3b-e4c8-5f40-93eb-5956b95a2c3f"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "f3af6d6a-7fc1-50b3-91ed-02c226d72cf5"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "76fbdf72-c272-58e2-9d2c-08e7ef1c0fc7"
+        }
+      ]
     },
     "studio-web-a": {
       "description": "Invi Studio web (Next.js on Node 22) with Application Insights, settings, diagnostics and GitHub deploy identity. Contributor is enough; no role assignment, DNS or TLS change",

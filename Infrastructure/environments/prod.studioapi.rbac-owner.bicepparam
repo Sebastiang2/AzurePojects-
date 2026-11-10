@@ -26,5 +26,5 @@ param secretNames = [
   'openai-api-key'
 ]
 
-// Output githubDeployPrincipalId of deployment A (an object id, not a secret). Empty until A has run.
-param githubDeployPrincipalId = ''
+// Output githubDeployPrincipalId of deployment A (an object id, not a secret), read back after A ran on 2026-11-10.
+param githubDeployPrincipalId = '55aff53b-4187-4949-bc29-048c79ab6534'
