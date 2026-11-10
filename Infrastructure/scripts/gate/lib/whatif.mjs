@@ -1,7 +1,7 @@
 // Judges the reduced what-if result (summarize-whatif.mjs output) against the manifest. what-if is one of three independent
 // signals (the others are the offline desired-vs-live checks and the RBAC/evidence checks); it is never trusted alone.
 import { lc, normalizePath, globToRegExp, isExpression } from "./util.mjs";
-import { liveBindingSslState, originLockTransition } from "./checks-sites.mjs";
+import { liveBindingSslState, originLockSteady, originLockTransition } from "./checks-sites.mjs";
 
 const PROTECTED = /(subnets|securityRules|ipSecurityRestrictions|scmIpSecurityRestrictions|hostNameSslStates|hostNameBindings|accessPolicies|userAssignedIdentities|privateEndpointConnections|delegations|serviceEndpoints|virtualNetworkRules|identity)(\[|\.|$)/i;
 
@@ -137,6 +137,19 @@ export function evaluateWhatIf(ctx) {
               d.op === "Create" && d.before == null && lc(d.after) === "allow") {
               findings.allowed("WHATIF-ORIGIN-BASELINE", subject, `${d.path} makes the existing implicit Allow explicit while both main-site rule lists stay empty`);
               continue;
+            }
+            // The lock is live and declared unchanged: what-if reports the declared list and default as Create although the
+            // deployment writes neither. Accepted only for the names of the manifest's own rules and for Deny.
+            if (originLockSteady(ctx, originSite)) {
+              const names = [d.after?.name, ...(d.after?.names ?? [])].filter(Boolean);
+              const known = new Set(deployment.originLock.rules.map((r) => lc(r.name)));
+              const steadyDefault = !d.path.endsWith("DefaultAction") || d.after === undefined || lc(d.after) === "deny";
+              const steadyArray = d.after?.kind !== "array" ||
+                (d.after.length === deployment.originLock.rules.length && d.after.names?.length === deployment.originLock.rules.length);
+              if (names.every((n) => known.has(lc(n))) && steadyDefault && steadyArray) {
+                findings.allowed("WHATIF-ORIGIN-STEADY", subject, `${d.path} is the origin lock already live, declared unchanged (${deployment.originLock.why})`);
+                continue;
+              }
             }
             const transition = originLockTransition(ctx, originSite);
             const expected = deployment.originLock.rules;
