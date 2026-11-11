@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import { evaluateSnapshot, haveSnapshot } from "./bicep-snapshot.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const studio = read("modules/studioapi.bicep");
@@ -23,14 +26,23 @@ test("the site is closed by default and never opens SCM through the main-site ru
   assert.match(studio, /ipSecurityRestrictions: studioInboundOpen \? inboundAllowRules : \[\]/);
   assert.match(studio, /ipSecurityRestrictionsDefaultAction: 'Deny'/);
   assert.match(studio, /scmIpSecurityRestrictionsUseMain: false/);
-  assert.match(params, /^param studioInboundOpen = false$/m);
+  // S11: production opens to the integration subnet only; the default action stays Deny.
+  assert.match(params, /^param studioInboundOpen = true$/m);
 });
 
-test("background jobs need Always On; Health check stays off until it is switched on", () => {
+test("the plan's outbound addresses are admitted only on request, and production does not request them", () => {
+  assert.match(studio, /param allowPlanOutboundAddresses bool = false/);
+  assert.match(studio, /var planOutboundAddresses = allowPlanOutboundAddresses \? split\(adminApp\.properties\.possibleOutboundIpAddresses, ','\) : \[\]/);
+  assert.match(params, /^param allowPlanOutboundAddresses = false$/m);
+  assert.match(params, /^param allowedInboundCidrs = \[\]$/m);
+});
+
+test("background jobs need Always On; Health check is on the liveness route, never the database check", () => {
   assert.match(studio, /alwaysOn: true/);
   assert.match(studio, /param studioHealthCheckEnabled bool = false/);
-  assert.match(studio, /healthCheckPath: studioHealthCheckEnabled \? '\/health' : null/);
-  assert.match(params, /^param studioHealthCheckEnabled = false$/m);
+  assert.match(studio, /healthCheckPath: studioHealthCheckEnabled \? '\/api\/health' : null/);
+  assert.doesNotMatch(studio, /healthCheckPath: studioHealthCheckEnabled \? '\/health'/, "/health checks the database: an outage would get the shared instance replaced");
+  assert.match(params, /^param studioHealthCheckEnabled = true$/m);
 });
 
 test("secrets are Key Vault references only, and every referenced secret gets per-secret access in B", () => {
@@ -83,7 +95,31 @@ test("the site admits the App Service integration subnet by its service endpoint
   assert.match(studio, /var appServiceSubnetName = 'snet-appservice-integration'/);
   assert.match(studio, /ipSecurityRestrictions: studioInboundOpen \? inboundAllowRules : \[\]/, "the rules are only used when the site is opened");
   assert.match(studio, /ipSecurityRestrictionsDefaultAction: 'Deny'/);
-  assert.match(params, /^param studioInboundOpen = false$/m);
+});
+
+// Evaluated offline (no deployment, no Azure call), like studio-web.test.mjs. Skipped when neither `az bicep snapshot` nor
+// the Bicep CLI is installed.
+test("rendered: production admits exactly the integration subnet, refuses everything else and checks /api/health", { skip: !haveSnapshot }, () => {
+  const dir = mkdtempSync(join(tmpdir(), "studioapi-ingress-"));
+  try {
+    mkdirSync(join(dir, "modules"));
+    mkdirSync(join(dir, "environments"));
+    cpSync(new URL("../modules/studioapi.bicep", import.meta.url), join(dir, "modules", "studioapi.bicep"));
+    const file = join(dir, "environments", "prod.studioapi.bicepparam");
+    writeFileSync(file, params);
+    const rendered = evaluateSnapshot(file);
+    assert.ok(rendered.ok, rendered.error);
+    const site = rendered.resources.find((r) => r.type === "Microsoft.Web/sites" && r.name === "app-invi-studio-api-prod-001");
+    const config = site.properties.siteConfig;
+    assert.deepEqual(config.ipSecurityRestrictions.map((r) => [r.name, r.priority, r.action]), [["Allow-AppService-Subnet", 90, "Allow"]]);
+    assert.match(config.ipSecurityRestrictions[0].vnetSubnetResourceId, /\/virtualNetworks\/vnet-invi-prod-001\/subnets\/snet-appservice-integration$/);
+    assert.equal(config.ipSecurityRestrictions[0].ipAddress, undefined, "no address rule: the subnet is the only way in");
+    assert.equal(config.ipSecurityRestrictionsDefaultAction, "Deny");
+    assert.deepEqual([config.scmIpSecurityRestrictionsUseMain, config.scmIpSecurityRestrictions], [false, []]);
+    assert.equal(config.healthCheckPath, "/api/health");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("the network module declares the Microsoft.Web service endpoint that the subnet rule relies on", () => {

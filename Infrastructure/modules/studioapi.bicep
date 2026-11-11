@@ -48,13 +48,16 @@ param linuxFxVersion string = 'DOTNETCORE|10.0'
 @description('Startup command, dotnet <Assembly>.dll. Empty = not set (App Service looks for the published assembly itself). Set it once the assembly name is known')
 param appCommandLine string = ''
 
-@description('Opens the site to the App Service integration subnet (the admin app, Studio web and the APIs on the same plan), to the plan\'s own outbound addresses and to allowedInboundCidrs. False: every inbound request is refused, which is the state until the code is deployed and tested')
+@description('Opens the site to the App Service integration subnet (the admin app, Studio web and the APIs on the same plan) and to allowedInboundCidrs; to the plan\'s outbound addresses too when allowPlanOutboundAddresses. False: every inbound request is refused, which is the state until the code is deployed and tested')
 param studioInboundOpen bool = false
+
+@description('Also admits the plan\'s possible outbound addresses when studioInboundOpen, for a caller on the plan that does not route through the VNet. Off: every app on the plan routes all traffic through the integration subnet (checked 2026-11-11), and those addresses are not the plan\'s alone, so they would admit other sites as well')
+param allowPlanOutboundAddresses bool = false
 
 @description('Additional CIDRs allowed in when studioInboundOpen is true (studio-web, later). /32 for a single address')
 param allowedInboundCidrs string[] = []
 
-@description('App Service Health check on /health (checks the database). Off until the app has run stably: the plan has one instance shared with both APIs, and an instance that stays unhealthy for an hour is replaced')
+@description('App Service Health check on /api/health, the liveness route Render also checks. Not /health, which checks the database: the plan has one instance shared with every app, and an instance that stays unhealthy for an hour is replaced, so a database outage must not restart the plan')
 param studioHealthCheckEnabled bool = false
 
 @description('Database inside mysql-<workload>-<env>-<instance>. The Core DB, the same one the APIs use')
@@ -107,10 +110,10 @@ var studioApiTags = union(
 // Who may call the API once it is open. The admin app, Studio web, the Data API and the Auth API run on the same plan and are
 // integrated into the same subnet with Route All, so their requests to this site's public name leave through the VNet: the site
 // sees the subnet, not one of the plan's outbound addresses. The subnet has the Microsoft.Web service endpoint, so a rule can name
-// it (the first rule). The plan's outbound addresses stay as the second way in, for a caller that does not route through the VNet.
-// Either way the Data API and Auth API get in too, which is accepted. The X-Studio-Api-Key / X-Studio-Admin-Key headers stay the
-// authentication: these rules only narrow who can try.
-var planOutboundAddresses = split(adminApp.properties.possibleOutboundIpAddresses, ',')
+// it (the first rule). The plan's outbound addresses are a second way in only when allowPlanOutboundAddresses, for a caller that
+// does not route through the VNet. The Data API and Auth API get in too, which is accepted. The X-Studio-Api-Key /
+// X-Studio-Admin-Key headers stay the authentication: these rules only narrow who can try.
+var planOutboundAddresses = allowPlanOutboundAddresses ? split(adminApp.properties.possibleOutboundIpAddresses, ',') : []
 var inboundAllowRules = concat(
   [
     {
@@ -235,7 +238,7 @@ resource studioApi 'Microsoft.Web/sites@2024-11-01' = {
       scmMinTlsVersion: '1.2'
 
       // Null clears the path when the switch is turned off again.
-      healthCheckPath: studioHealthCheckEnabled ? '/health' : null
+      healthCheckPath: studioHealthCheckEnabled ? '/api/health' : null
 
       // Closed (no allow rule, default Deny) until studioInboundOpen. The SCM site keeps its own rules, so the GitHub
       // deployment through Entra is not affected.
