@@ -40,12 +40,12 @@ test("first Studio deployment denies all main-site ingress while SCM remains a s
   assert.match(app, /Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments/);
 });
 
-test("production URLs, Render API and origin settings are explicit", () => {
+test("production URLs, the Azure Studio API and origin settings are explicit", () => {
   for (const expected of [
     "NODE_ENV: 'production'",
     "STUDIO_ENVIRONMENT: 'production'",
     "HOSTNAME: '0.0.0.0'",
-    "ONBOARDING_API_BASE_URL: 'https://invi-studio-api.onrender.com'",
+    "ONBOARDING_API_BASE_URL: 'https://app-invi-studio-api-prod-001.azurewebsites.net'",
     "STUDIO_PUBLIC_URL: 'https://studio.invi.lol'",
     "STUDIO_PUBLIC_ORIGIN: 'https://studio.invi.lol'",
     "STUDIO_PILOT_ORGANIZER_IDS: '90,91'",
@@ -93,13 +93,15 @@ test("GitHub OIDC is limited to the canonical repository production environment"
   assert.match(rbac, /de139f84-1756-47ae-9be6-808fbbe84772/);
 });
 
-test("deployment A carries exactly the reviewed OIDC subject transition, and the ingress deployments carry none", () => {
+test("deployment A carries exactly the reviewed OIDC subject transition (plus the one reviewed API address, see below), and the ingress deployments carry none", () => {
   const credential = "id-gha-invi-studio-prod-001/github-production";
   const before = "repo:CetchApp/invi-studio:environment:production";
   const after = manifest.identities.known["id-gha-invi-studio-prod-001"]["github-production"].subject;
   const a = manifest.deployments["studio-web-a"];
-  assert.equal(a.allowedChanges.length, 2, "the live entry and the what-if entry, nothing else");
-  const [live, whatif] = a.allowedChanges;
+  // The entries about the credential: the live one and the what-if one, nothing else. (A also carries the reviewed address change of the Studio API, which is not about the credential.)
+  const credentialChanges = a.allowedChanges.filter((c) => c.resource === credential);
+  assert.equal(credentialChanges.length, 2, "the live entry and the what-if entry, nothing else");
+  const [live, whatif] = credentialChanges;
   for (const entry of [live, whatif]) {
     assert.equal(entry.resource, credential);
     assert.deepEqual([entry.before, entry.after], [before, after], "the exact old and the exact new subject");
@@ -248,4 +250,20 @@ test("rendered: the public file differs from deployment A in exactly one propert
   // A parameter left out fails closed, and a value that is not closed or public does not compile.
   assert.equal(leaves(rendered.left_out.resources).get(key), "Deny");
   assert.equal(rendered.unknown.ok, false, "ingressMode only accepts closed or public");
+});
+
+test("Studio calls the Studio API on Azure: the same address in A and E, the manifest's invariant, and one reviewed transition in A only", () => {
+  const azureApi = "https://app-invi-studio-api-prod-001.azurewebsites.net";
+  const renderApi = "https://invi-studio-api.onrender.com";
+  const valueOf = (text) => /ONBOARDING_API_BASE_URL: '([^']+)'/.exec(text)?.[1];
+  assert.equal(valueOf(params), azureApi);
+  assert.equal(valueOf(publicParams), azureApi, "E must carry the same address as A, or opening the site would switch the API");
+  assert.equal(manifest.apps["app-invi-studio-prod-001"].mustEqual.ONBOARDING_API_BASE_URL, azureApi);
+  const transition = (key) => (manifest.deployments[key].allowedChanges ?? []).filter((c) => c.property === "setting:ONBOARDING_API_BASE_URL");
+  assert.deepEqual(transition("studio-web-a").map((c) => [c.before, c.after]), [[renderApi, azureApi]], "A may change the address from exactly the Render service to exactly the Azure API");
+  // E has no such allowance on purpose: if the address were still the Render one live, opening the site is blocked by the gate until A has been applied.
+  assert.deepEqual(transition("studio-web-e-ingress-public"), []);
+  assert.deepEqual(transition("studio-web-e-ingress-close"), []);
+  // The address is the site that studioapi.bicep creates.
+  assert.match(readFileSync(new URL("../modules/studioapi.bicep", import.meta.url), "utf8"), /var studioApiName = 'app-\$\{workloadName\}-studio-api-\$\{environment\}-\$\{instance\}'/);
 });
