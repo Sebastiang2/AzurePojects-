@@ -114,7 +114,6 @@
         "STUDIO_PUBLIC_URL",
         "STUDIO_PUBLIC_ORIGIN",
         "STUDIO_REQUIRE_EMAIL",
-        "STUDIO_PILOT_ORGANIZER_IDS",
         "KEY_VAULT_URI",
         "KEY_VAULT_MAP"
       ],
@@ -123,11 +122,10 @@
         "STUDIO_ENVIRONMENT": "production",
         "HOSTNAME": "0.0.0.0",
         "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
-        "ONBOARDING_API_BASE_URL": "https://invi-studio-api.onrender.com",
+        "ONBOARDING_API_BASE_URL": "https://app-invi-studio-api-prod-001.azurewebsites.net",
         "STUDIO_PUBLIC_URL": "https://studio.invi.lol",
         "STUDIO_PUBLIC_ORIGIN": "https://studio.invi.lol",
         "STUDIO_REQUIRE_EMAIL": "false",
-        "STUDIO_PILOT_ORGANIZER_IDS": "90,91",
         "KEY_VAULT_MAP": "studio-api-key:STUDIO_API_KEY;studio-session-secret:STUDIO_SESSION_SECRET;studio-google-places-api-key:GOOGLE_PLACES_API_KEY;openai-api-key:OPENAI_API_KEY"
       },
       "introducedBy": "studio-web-a"
@@ -1126,9 +1124,24 @@
         }
       ],
       "allowedUnsupported": [],
-      "allowedNewSettings": {},
-      "allowedRemovedSettings": {},
+      "allowedNewSettings": {
+        "app-invi-studio-prod-001": [
+          "STUDIO_SELF_SIGNUP"
+        ]
+      },
+      "allowedRemovedSettings": {
+        "app-invi-studio-prod-001": [
+          "STUDIO_PILOT_ORGANIZER_IDS"
+        ]
+      },
       "allowedChanges": [
+        {
+          "resource": "app-invi-studio-prod-001",
+          "property": "setting:ONBOARDING_API_BASE_URL",
+          "before": "https://invi-studio-api.onrender.com",
+          "after": "https://app-invi-studio-api-prod-001.azurewebsites.net",
+          "why": "the switch (docs/studio-web-rollout.md, S12): production Studio calls the Studio API on Azure (database invi) instead of the Render test service, after S11 has been applied. With it the pilot ends: STUDIO_PILOT_ORGANIZER_IDS is removed and STUDIO_SELF_SIGNUP added (decided 2026-11-14). One-time: remove this entry and the two settings lists above after studio-web-a has been applied"
+        },
         {
           "resource": "id-gha-invi-studio-prod-001/github-production",
           "property": "subject",
@@ -1153,7 +1166,7 @@
         },
         {
           "id": "R-STUDIO-KEY-PAIR",
-          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the value configured on the Render onboarding API, and both required secrets (studio-api-key, studio-session-secret) must exist before code deployment. All four mapped secrets must exist before studio-web-b-rbac, which scopes one role assignment to each; the two optional ones (studio-google-places-api-key, the shared openai-api-key) only switch features on."
+          "text": "The gate never reads secret values. The studio-api-key value loaded here must equal the STUDIO_API_KEY of the Studio API on Azure; both read the same vault secret, and verify-api-key.mjs checks it from inside the app. Both required secrets (studio-api-key, studio-session-secret) must exist before code deployment. All four mapped secrets must exist before studio-web-b-rbac, which scopes one role assignment to each; the two optional ones (studio-google-places-api-key, the shared openai-api-key) only switch features on."
         }
       ],
       "touches": [

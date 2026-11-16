@@ -8,7 +8,7 @@ The deployments are deliberately separate, and each has its own approval:
 4. `studio-web-d-domain-tls` creates the managed certificate and enables SNI after the binding and public DNS validate.
 5. `studio-web-e-ingress-public` opens the main site (see "Opening the main site"). Its rollback is `studio-web-e-ingress-close`.
 
-No deployment creates secrets or changes DNS. The value of `studio-api-key` must equal `STUDIO_API_KEY` on the onboarding API (`https://invi-studio-api.onrender.com`); verify equality without printing either value (step 7 below). That API runs on Render and is configured in the Render dashboard: nothing about it is managed by this repository.
+No deployment creates secrets or changes DNS. The value of `studio-api-key` must equal `STUDIO_API_KEY` on the onboarding API that Studio calls; verify equality without printing either value (step 7 below). From the switch in S12 that is the Studio API on Azure (`https://app-invi-studio-api-prod-001.azurewebsites.net`), which reads the same vault secret. Before it, Studio called the Render service (`https://invi-studio-api.onrender.com`), the test setup with the test database, configured in the Render dashboard and not managed by this repository.
 
 ## First-deployment access policy
 
@@ -83,7 +83,7 @@ The database track has its own approvals and sits inside "The Studio API on Azur
 
 - **Opening the main site (step 11).** DNS is at Namecheap, so there is no Cloudflare in front of Studio and the Data API's origin lock cannot be copied. The decision is whether the public launch is an open site (recommended, implemented as deployment E) or waits for something in front of it. Until E is applied the site is closed, also for customers.
 - **Who is exempt from payment, and when Stripe opens.** Until then only exempt organizers publish paid content.
-- **How a Studio sign-up is approved in production.** A business that signs up in Studio is created inactive (hidden in the Invi app) and shows in the admin panel's list «Venter godkjenning». The production panel (Easy Auth, reading through the Data API) has no approve action that works: its approve button calls the onboarding API from the browser, an address the production build does not have, and that route needs the admin key (`ADMIN_ACCESS_MODE=enforce`). What does work today is the invited account: the panel creates the organizer and its Studio login. Until an approve action exists, either the public sign-up page is not offered at launch, or sign-ups wait. Either an approve action in the Data API's admin surface with a route in the panel, or a same-origin route in the panel that adds `X-Studio-Admin-Key`, closes it; both are the panel owner's change.
+- **How a Studio sign-up is approved in production.** A business that signs up in Studio is created inactive (hidden in the Invi app) and shows in the admin panel's list «Venter godkjenning». The production panel (Easy Auth, reading through the Data API) has no approve action that works: its approve button calls the onboarding API from the browser, an address the production build does not have, and that route needs the admin key (`ADMIN_ACCESS_MODE=enforce`). What does work today is the invited account: the panel creates the organizer and its Studio login. Until an approve action exists, either the public sign-up page is not offered at launch, or sign-ups wait. Either an approve action in the Data API's admin surface with a route in the panel, or a same-origin route in the panel that adds `X-Studio-Admin-Key`, closes it; both are the panel owner's change. Decided 2026-11-14: the sign-up page is offered from the switch (`STUDIO_SELF_SIGNUP = 'true'`), so sign-ups wait until one of the two exists.
 
 ## The Studio API on Azure
 
@@ -103,7 +103,7 @@ Studio, the admin panel and the Invi app only see each other's organizers and ac
 | S9 | `Migrations/preflight-readonly.sql`, `verify-catalogs-readonly.sql` and `privileges-readonly.sql` again, read-only | Backend owner | G7 below: no Studio table missing, `StudioBillingExemption` present, no «Could not create», «Could not apply» or «Studio tables were not checked» in the log, one `match places` row of category Seat; the ended-activities counts of statement 13 match what the first start did |
 | S10 | Checks from inside the closed site (Kudu SSH of the Studio API, Entra sign-in): `curl http://localhost:8080/api/health` and `/health` are 200; an admin route (`/api/organizers`) without a key is 401 and a Studio route without the Studio key is 401 | Backend owner | Stop on a 5xx or on an answer that needs no key |
 | S11 | `studioInboundOpen = true` and `studioHealthCheckEnabled = true` in `prod.studioapi.bicepparam` (reviewed change), `studioapi-a` again. Admits the integration subnet only: every app on the plan routes all its traffic through it (checked 2026-11-11), so the plan's outbound addresses stay out (`allowPlanOutboundAddresses = false`; they are not the plan's alone). Health check on `/api/health`, the liveness route, not `/health`, which checks the database. The keys stay the authentication | Backend owner | `403 Ip Forbidden` from outside; the callers on the plan get through (Studio web's `/api/health?deep=1` no longer reports `api-refused`). If a caller is refused, `allowPlanOutboundAddresses = true` is the fallback |
-| S12 | Studio web to the Azure API: `ONBOARDING_API_BASE_URL` in `prod.studio-web.bicepparam` and `prod.studio-web.ingress-public.bicepparam` (a separate pull request, merged only now), then `studio-web-a`. Then, inside Studio web: `/api/health?deep=1` is 200 and `node verify-api-key.mjs` says `RESULT: MATCH` with the exemption line | Backend owner | Stop if the deep check does not pass. The old value is the rollback |
+| S12 | Studio web to the Azure API, after S11 has been applied (see "The switch to the Azure API" below): `ONBOARDING_API_BASE_URL` in `prod.studio-web.bicepparam` and `prod.studio-web.ingress-public.bicepparam` points at the Studio API on Azure, `STUDIO_PILOT_ORGANIZER_IDS` is removed and `STUDIO_SELF_SIGNUP = 'true'` is added (a separate pull request, merged only now). Remove the pilot's manual access rules, then `studio-web-a`. Then, inside Studio web: `/api/health?deep=1` is 200 and `node verify-api-key.mjs` says `RESULT: MATCH` with the exemption line | Backend owner | Stop if the deep check does not pass: the site is still closed, so nobody is affected. Then E |
 | S13 | The admin panel's moderation of one-off events (`INVI_STUDIO_API_BASE_URL` and `STUDIO_ADMIN_API_KEY` of the admin app) is the admin app's own change and not needed for E unless one-off events are offered | Admin app owner | |
 
 ### Go and no-go for the database
@@ -121,7 +121,17 @@ Every criterion is read by a script of the onboarding repository (`Migrations/ST
 | G7 | After the first start (S9): the log names the intended database and has none of the error lines above, the preflight shows only what is still manual, and `match places` is one row of category Seat | any of those lines, or a Studio table still missing |
 | G8 | Through the closed site (S10) and through Studio web (S12): `GET /api/venue-types?activeOnly=true` returns the approved rows and `GET /api/studio/reservation-settings` answers 200 for a test organizer (which is removed afterwards) | a 5xx on either |
 
-Then step 11 and E. Rollback of the switch: put the old `ONBOARDING_API_BASE_URL` back and apply `studio-web-a`.
+Then step 11 and E.
+
+### The switch to the Azure API (decided 2026-11-14)
+
+The switch ends the pilot. Studio switched its pilot on by itself only for the Render API address, and no `STUDIO_PILOT_MODE` is set, so from `studio-web-a` on every organizer in `invi` can sign in, and the sign-up page is open. The organizer list of the pilot (`STUDIO_PILOT_ORGANIZER_IDS`) was a list of test-database ids and is removed. The owner reported the isolation between organizers tested on 2026-11-16, which is what the pilot was there to protect.
+
+`studio-web-a` changes three settings and nothing else, each through a one-time entry of the manifest: `ONBOARDING_API_BASE_URL` from exactly the Render address to exactly the Azure one, `STUDIO_PILOT_ORGANIZER_IDS` removed, `STUDIO_SELF_SIGNUP` added. Remove those entries in a small pull request after A has been applied.
+
+The pilot's access rules go first. During the pilot, Allow rules for single tester addresses were added to the main site by hand. They are not in Bicep (addresses identify people and this repository is public), and the template declares an empty rule list, so the gate refuses A while any of them exists (`ACCESS-RULE-REMOVED`). Remove them by hand, one `az webapp config access-restriction remove -g rg-invi-prod-swc-001 -n app-invi-studio-prod-001 --rule-name <name>` per rule, immediately before A and in the same window. Read the rule list back: only the implicit `Deny all` may remain, and SCM must be unchanged. Between A and E the site is closed to everyone.
+
+Rollback: `studio-web-e-ingress-close` closes the site again (after E). Pointing Studio back at Render is not a rollback: that service uses the test database.
 
 ## Opening the main site
 
@@ -133,6 +143,8 @@ Then step 11 and E. Rollback of the switch: put the old `ONBOARDING_API_BASE_URL
 | `studio-web-e-ingress-close` (rollback) | `prod.studio-web.bicepparam` (the file of A) | `Allow` to `Deny` | the opposite change, for the same site only |
 
 Checked offline: the two parameter files render (`az bicep snapshot`) with exactly one difference, that property; the gate approves the change only with its own manifest entry, in one direction, for this site. The what-if of a real deployment shows the same single property; the unchanged app-settings bag is read by the live comparison of the gate, not by what-if.
+
+After the public step, `prod.studio-web.ingress-public.bicepparam` is the file that describes production. Later changes to Studio web deploy with `studio-web-e-ingress-public`: deployment A would close the site again, and the gate refuses that change.
 
 After the public step: `https://studio.invi.lol/api/health` and `?deep=1` from outside; the smoke check of the deploy workflow against the default host name then runs in full, without the warning; Application Insights shows no 5xx; the sign-in limit (30 per 15 minutes per address) still counts the client address once.
 

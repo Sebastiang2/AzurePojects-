@@ -30,12 +30,17 @@ param appSettings = {
   STUDIO_ENVIRONMENT: 'production'
   HOSTNAME: '0.0.0.0'
   NEXT_TELEMETRY_DISABLED: '1'
-  ONBOARDING_API_BASE_URL: 'https://invi-studio-api.onrender.com'
+  // The Studio API on Azure (modules/studioapi.bicep), which writes to the production database invi. It admits only the
+  // App Service integration subnet, which this app routes all its traffic through (vnetRouteAllEnabled).
+  ONBOARDING_API_BASE_URL: 'https://app-invi-studio-api-prod-001.azurewebsites.net'
   STUDIO_PUBLIC_URL: 'https://studio.invi.lol'
   STUDIO_PUBLIC_ORIGIN: 'https://studio.invi.lol'
   STUDIO_REQUIRE_EMAIL: 'false'
-  // Render/Aiven synthetic pilot: signed-in organizers outside this list are denied.
-  STUDIO_PILOT_ORGANIZER_IDS: '90,91'
+  // Sign-up open (decided 2026-11-14). A business that signs up is created inactive and waits in the admin panel's
+  // «Venter godkjenning» list (docs/studio-web-rollout.md, "Decisions that are not made yet").
+  STUDIO_SELF_SIGNUP: 'true'
+  // No pilot: STUDIO_PILOT_MODE and STUDIO_PILOT_ORGANIZER_IDS are left out on purpose (decided 2026-11-14). Studio only
+  // switched its pilot on by itself for the Render API address, which this app no longer calls.
 }
 
 // These names are metadata. Values stay in Key Vault. The API must use the same studio-api-key value.

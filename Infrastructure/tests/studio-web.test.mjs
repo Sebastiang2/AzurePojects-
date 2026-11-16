@@ -40,20 +40,34 @@ test("first Studio deployment denies all main-site ingress while SCM remains a s
   assert.match(app, /Basic publishing is disabled below and OIDC plus site-scoped RBAC authenticate deployments/);
 });
 
-test("production URLs, Render API and origin settings are explicit", () => {
+test("production URLs, the Azure Studio API and origin settings are explicit", () => {
   for (const expected of [
     "NODE_ENV: 'production'",
     "STUDIO_ENVIRONMENT: 'production'",
     "HOSTNAME: '0.0.0.0'",
-    "ONBOARDING_API_BASE_URL: 'https://invi-studio-api.onrender.com'",
+    "ONBOARDING_API_BASE_URL: 'https://app-invi-studio-api-prod-001.azurewebsites.net'",
     "STUDIO_PUBLIC_URL: 'https://studio.invi.lol'",
     "STUDIO_PUBLIC_ORIGIN: 'https://studio.invi.lol'",
-    "STUDIO_PILOT_ORGANIZER_IDS: '90,91'",
+    "STUDIO_SELF_SIGNUP: 'true'",
   ]) assert.match(params, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.doesNotMatch(params, /STUDIO_BILLING_PREVIEW|STUDIO_BILLING_EXEMPT/);
-  const pilot = manifest.apps["app-invi-studio-prod-001"];
-  assert.ok(pilot.required.includes("STUDIO_PILOT_ORGANIZER_IDS"));
-  assert.equal(pilot.mustEqual.STUDIO_PILOT_ORGANIZER_IDS, "90,91");
+  const code = params.replace(/^\s*\/\/.*$/gm, "");
+  // The Render service is the test setup with the test database: production Studio never calls it again.
+  assert.doesNotMatch(code, /onrender\.com/);
+  // The pilot ends at the switch (decided 2026-11-14): no pilot flag and no organizer list, in the files or as an invariant.
+  assert.doesNotMatch(code, /STUDIO_PILOT_MODE|STUDIO_PILOT_ORGANIZER_IDS/);
+  const studio = manifest.apps["app-invi-studio-prod-001"];
+  assert.ok(!studio.required.includes("STUDIO_PILOT_ORGANIZER_IDS"));
+  assert.ok(!("STUDIO_PILOT_ORGANIZER_IDS" in studio.mustEqual));
+  assert.equal(studio.mustEqual.ONBOARDING_API_BASE_URL, "https://app-invi-studio-api-prod-001.azurewebsites.net");
+});
+
+test("the API address is the default host name of the Studio API site this repository deploys", () => {
+  const studioApi = read("modules/studioapi.bicep");
+  assert.match(studioApi, /var studioApiName = 'app-\$\{workloadName\}-studio-api-\$\{environment\}-\$\{instance\}'/);
+  const url = /ONBOARDING_API_BASE_URL: '([^']+)'/.exec(params)[1];
+  assert.equal(url, "https://app-invi-studio-api-prod-001.azurewebsites.net", "https and the azurewebsites host the subnet rule of S11 admits");
+  assert.ok(manifest.apps["app-invi-studio-api-prod-001"], "the Studio API is a reviewed app of the manifest");
 });
 
 test("secrets load in-process from the private vault with per-secret RBAC", () => {
@@ -98,8 +112,9 @@ test("deployment A carries exactly the reviewed OIDC subject transition, and the
   const before = "repo:CetchApp/invi-studio:environment:production";
   const after = manifest.identities.known["id-gha-invi-studio-prod-001"]["github-production"].subject;
   const a = manifest.deployments["studio-web-a"];
-  assert.equal(a.allowedChanges.length, 2, "the live entry and the what-if entry, nothing else");
-  const [live, whatif] = a.allowedChanges;
+  const subjectEntries = a.allowedChanges.filter((c) => c.resource === credential);
+  assert.equal(subjectEntries.length, 2, "the live entry and the what-if entry, nothing else");
+  const [live, whatif] = subjectEntries;
   for (const entry of [live, whatif]) {
     assert.equal(entry.resource, credential);
     assert.deepEqual([entry.before, entry.after], [before, after], "the exact old and the exact new subject");
@@ -109,6 +124,30 @@ test("deployment A carries exactly the reviewed OIDC subject transition, and the
   // E (public and close) must never be able to approve a subject change: the credential is A's, and A applies it once.
   for (const key of ["studio-web-e-ingress-public", "studio-web-e-ingress-close"]) {
     assert.ok(!manifest.deployments[key].allowedChanges.some((c) => c.resource === credential || /subject|federatedIdentityCredentials/.test(`${c.property}${c.type ?? ""}`)), key);
+  }
+});
+
+test("deployment A carries the one-time switch to the Azure API and nothing else about settings", () => {
+  const site = "app-invi-studio-prod-001";
+  const a = manifest.deployments["studio-web-a"];
+  const settingEntries = a.allowedChanges.filter((c) => String(c.property).startsWith("setting:"));
+  assert.equal(settingEntries.length, 1, "only the API address changes value");
+  const [address] = settingEntries;
+  const declared = /ONBOARDING_API_BASE_URL: '([^']+)'/.exec(params)[1];
+  assert.deepEqual(
+    [address.resource, address.property, address.before, address.after],
+    [site, "setting:ONBOARDING_API_BASE_URL", "https://invi-studio-api.onrender.com", declared],
+    "exactly from the Render test service to the declared Azure address",
+  );
+  assert.deepEqual(a.allowedNewSettings, { [site]: ["STUDIO_SELF_SIGNUP"] });
+  assert.deepEqual(a.allowedRemovedSettings, { [site]: ["STUDIO_PILOT_ORGANIZER_IDS"] });
+  // Every allowed change of A is either the switch or the reviewed OIDC subject transition.
+  for (const change of a.allowedChanges) {
+    assert.ok(change === address || change.resource === "id-gha-invi-studio-prod-001/github-production", JSON.stringify(change));
+  }
+  // The ingress steps and the rollback change no setting: after A, they differ from production in the default action only.
+  for (const key of ["studio-web-e-ingress-public", "studio-web-e-ingress-close"]) {
+    assert.ok(!manifest.deployments[key].allowedChanges.some((c) => String(c.property).startsWith("setting:")), key);
   }
 });
 
