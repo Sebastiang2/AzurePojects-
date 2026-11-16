@@ -93,11 +93,15 @@
         "DATA_API_ADMIN_KEY_TEST",
         "SCM_DO_BUILD_DURING_DEPLOYMENT",
         "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET",
-        "WEBSITE_AUTH_AAD_ALLOWED_TENANTS"
+        "WEBSITE_AUTH_AAD_ALLOWED_TENANTS",
+        "INVI_STUDIO_API_BASE_URL",
+        "STUDIO_ADMIN_API_KEY"
       ],
       "mustEqual": {
         "SCM_DO_BUILD_DURING_DEPLOYMENT": "false",
-        "APP_ENV": "production"
+        "APP_ENV": "production",
+        "INVI_STUDIO_API_BASE_URL": "https://app-invi-studio-api-prod-001.azurewebsites.net",
+        "STUDIO_ADMIN_API_KEY": "@Microsoft.KeyVault(VaultName=kv-invi-prod-001;SecretName=studio-admin-api-key)"
       },
       "secureFeeds": {
         "MICROSOFT_PROVIDER_AUTHENTICATION_SECRET": "ADMIN_ENTRA_CLIENT_SECRET"
@@ -496,6 +500,14 @@
         "status": "declared"
       },
       {
+        "name": "1509b6d4-fafb-5ab3-9255-d793b9ede485",
+        "role": "Key Vault Secrets User",
+        "principalType": "ServicePrincipal",
+        "scope": "/resourceGroups/rg-invi-prod-swc-001/providers/Microsoft.KeyVault/vaults/kv-invi-prod-001/secrets/studio-admin-api-key",
+        "description": "admin app system identity: Secrets User on secret studio-admin-api-key, for the panel's server-side approval of Studio sign-ups (modules/adminapp-rbac.bicep, deployment adminapp-b-rbac)",
+        "status": "declared"
+      },
+      {
         "name": "8b28a483-f9ea-41d4-949c-142596e444ca",
         "role": "Website Contributor",
         "principalType": "ServicePrincipal",
@@ -824,10 +836,19 @@
       ],
       "allowedCreates": [],
       "allowedUnsupported": [],
-      "allowedNewSettings": {},
+      "allowedNewSettings": {
+        "app-invi-admin-prod-001": [
+          "INVI_STUDIO_API_BASE_URL",
+          "STUDIO_ADMIN_API_KEY"
+        ]
+      },
       "allowedRemovedSettings": {},
       "allowedChanges": [],
       "residualRisks": [
+        {
+          "id": "R-ADMIN-STUDIO-KEY",
+          "text": "STUDIO_ADMIN_API_KEY is a Key Vault reference to studio-admin-api-key, the key the Studio API checks X-Studio-Admin-Key against. Apply adminapp-b-rbac first, so the reference resolves, then check that it shows as Resolved (portal, Environment variables). The panel must send the key from its server only, never to the browser. Remove the two allowedNewSettings entries after this has been applied."
+        },
         {
           "id": "R-ADMIN-EASYAUTH",
           "text": "An empty ADMIN_ENTRA_CLIENT_SECRET turns Easy Auth off and closes the site (inbound Deny). The deploy script refuses an empty value; the gate only ever sees a placeholder."
@@ -870,12 +891,18 @@
       "parameters": "Infrastructure/environments/prod.adminapp.rbac-owner.bicepparam",
       "deploymentName": "invi-prod-adminapp-rbac-001",
       "secureEnvironment": [],
-      "allowedCreates": [],
+      "allowedCreates": [
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "1509b6d4-fafb-5ab3-9255-d793b9ede485",
+          "why": "Key Vault Secrets User for the admin app system identity on secret studio-admin-api-key only, so the panel's server can approve Studio sign-ups (decided 2026-11-16, option B)"
+        }
+      ],
       "allowedUnsupported": [
         {
           "module": "secretAccess",
-          "why": "role assignment named with guid() on the admin app's principal; verified by the RBAC checks against live",
-          "count": 1
+          "why": "role assignments named with guid() on the admin app's principal (admin-publishing-api-key, studio-admin-api-key); verified by the RBAC checks against live",
+          "count": 2
         }
       ],
       "allowedNewSettings": {},
@@ -886,6 +913,10 @@
         {
           "type": "Microsoft.Authorization/roleAssignments",
           "name": "03e6c59f-9327-4311-9f66-e6045e5f7abb"
+        },
+        {
+          "type": "Microsoft.Authorization/roleAssignments",
+          "name": "1509b6d4-fafb-5ab3-9255-d793b9ede485"
         }
       ]
     },

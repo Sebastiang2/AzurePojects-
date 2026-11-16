@@ -82,3 +82,11 @@ param entraClientSecret = readEnvironmentVariable('ADMIN_ENTRA_CLIENT_SECRET')
 param dataApiTestBaseUrl = 'https://cetchapp-data-api.onrender.com/'
 param dataApiTestAdminKeySecretName = 'admin-publishing-api-key-test'
 param scmDoBuildDuringDeployment = 'false'
+
+// Approval of Studio sign-ups (decided 2026-11-16, option B in docs/studio-web-rollout.md): the panel's server calls the
+// Studio API's admin route with X-Studio-Admin-Key. The API admits only the App Service integration subnet, which this
+// app routes all its traffic through. studio-admin-api-key is the secret the Studio API checks the header against
+// (prod.studioapi.bicepparam). Order: the role on the secret (prod.adminapp.rbac-owner.bicepparam) first, then this file,
+// so the reference resolves; the panel code that reads both settings after that.
+param studioApiBaseUrl = 'https://app-invi-studio-api-prod-001.azurewebsites.net'
+param studioAdminKeySecretName = 'studio-admin-api-key'
