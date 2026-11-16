@@ -107,7 +107,11 @@ param studioSettings = {
   ADMIN_ACCESS_MODE: 'enforce'
 }
 
-// Closed until the code is deployed and tested; Health check off until the app has run stably.
-param studioInboundOpen = false
+// S11 (docs/studio-web-rollout.md): open to the App Service integration subnet only, after the first start and the checks of S10.
+// Every app on the plan routes all its traffic through that subnet, so Studio web (and later the admin app) gets in. The
+// outbound addresses of the plan stay out (allowPlanOutboundAddresses false), and everything else is still refused (default Deny).
+// Health check on /api/health: the liveness route, not the database check.
+param studioInboundOpen = true
+param allowPlanOutboundAddresses = false
 param allowedInboundCidrs = []
-param studioHealthCheckEnabled = false
+param studioHealthCheckEnabled = true

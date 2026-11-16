@@ -906,7 +906,7 @@
       "touches": []
     },
     "studioapi-a": {
-      "description": "Studio API (.NET 10) with its Application Insights, settings, diagnostics and GitHub deploy identity. Contributor is enough. First deployment creates everything; the site stays closed (inbound Deny)",
+      "description": "Studio API (.NET 10) with its Application Insights, settings, diagnostics and GitHub deploy identity. Contributor is enough. First deployment creates everything; the site stays closed (inbound Deny). From S11 the main site admits the App Service integration subnet only (default still Deny)",
       "template": "Infrastructure/modules/studioapi.bicep",
       "parameters": "Infrastructure/environments/prod.studioapi.bicepparam",
       "deploymentName": "invi-prod-studioapi-001",
@@ -951,8 +951,25 @@
       "allowedUnsupported": [],
       "allowedNewSettings": {},
       "allowedRemovedSettings": {},
-      "allowedChanges": [],
+      "allowedChanges": [
+        {
+          "resource": "app-invi-studio-api-prod-001",
+          "property": "ipSecurityRestrictions:Allow-AppService-Subnet",
+          "why": "S11 (docs/studio-web-rollout.md): the one allow rule, for the App Service integration subnet through which every app on the plan routes (Studio web calls the API this way). The default action stays Deny and the plan's outbound addresses stay out. Remove this entry after S11 has been applied"
+        },
+        {
+          "resource": "app-invi-studio-api-prod-001",
+          "property": "siteConfig.healthCheckPath",
+          "before": null,
+          "after": "/api/health",
+          "why": "S11: Health check on the liveness route once the code has run (S10 read /api/health as 200), not on /health, which checks the database. Covers the live comparison and the what-if Create. Remove this entry after S11 has been applied"
+        }
+      ],
       "residualRisks": [
+        {
+          "id": "R-STUDIO-INBOUND-OPEN",
+          "text": "S11 opens the main site to the App Service integration subnet: Studio web, the admin app, the Data API and the Auth API can all reach it, nothing else. The keys (X-Studio-Api-Key, X-Studio-Admin-Key) stay the authentication. Apply only after the first start and the S10 checks; from outside the answer must still be 403."
+        },
         {
           "id": "R-STUDIO-KV-REFERENCES",
           "text": "The Key Vault references resolve only after studioapi-b-rbac and only for secrets that exist. Until then the app gets the literal reference string as the value. Check that every reference shows as Resolved before code is deployed."
