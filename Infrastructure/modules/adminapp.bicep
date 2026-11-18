@@ -70,6 +70,12 @@ param dataApiTestAdminKeySecretName string = ''
 @description('Value of SCM_DO_BUILD_DURING_DEPLOYMENT. Empty = not set. Production has false: the pipeline builds, the platform must not.')
 param scmDoBuildDuringDeployment string = ''
 
+@description('Base URL of the Studio API on Azure, which the panel\'s server calls to approve Studio sign-ups. Never the browser: the API admits only the App Service integration subnet. Empty = not set.')
+param studioApiBaseUrl string = ''
+
+@description('Name of the Key Vault secret with the Studio API admin key (X-Studio-Admin-Key). It is passed to the app as a Key Vault reference and read by the panel\'s server only. Empty = not set. The admin identity needs access to that secret (adminapp-rbac.bicep).')
+param studioAdminKeySecretName string = ''
+
 var appServicePlanName = 'asp-${workloadName}-${environment}-${instance}'
 var keyVaultName = 'kv-${workloadName}-${environment}-${instance}'
 var logAnalyticsName = 'log-${workloadName}-${environment}-${instance}'
@@ -220,13 +226,16 @@ resource adminApp 'Microsoft.Web/sites@2024-11-01' = {
 //     replaced by Easy Auth
 //   - DATA_API_ADMIN_KEY_PROD: the app reads admin-publishing-api-key from KEY_VAULT_URI at runtime
 //   - DATA_API_BASE_URL and DATA_API_ADMIN_KEY without _PROD: the app treats those as the TEST environment
-//   - the legacy onboarding and Studio URLs: publishing mode does not use them
-// Set when a value is given (production has all three, set by hand 2026-10-06; the application repository's README and
+//   - the legacy onboarding URLs: publishing mode does not use them
+// Set when a value is given (production has the first three, set by hand 2026-10-06; the application repository's README and
 // workflow expect them on the App Service, so a deployment of this file must keep them):
 //   - DATA_API_BASE_URL_TEST and DATA_API_ADMIN_KEY_TEST: the test environment of the admin panel's environment switch
 //     (the Render staging Data API). The key is a Key Vault reference to the secret named by dataApiTestAdminKeySecretName;
 //     unlike the APIs' references it resolves (status Resolved, checked 2026-10-15)
 //   - SCM_DO_BUILD_DURING_DEPLOYMENT=false: the pipeline builds, the platform must not build on the shared instance
+//   - INVI_STUDIO_API_BASE_URL and STUDIO_ADMIN_API_KEY: the Studio API on Azure and its admin key, for the panel's server-side
+//     approval of Studio sign-ups (docs/studio-web-rollout.md, S13). The key is a Key Vault reference, like the test key, and
+//     never a NEXT_PUBLIC_* value: the browser must not see it, and it could not reach the API anyway (subnet only)
 // HOSTNAME makes the standalone server listen on all interfaces.
 resource adminAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
   parent: adminApp
@@ -252,6 +261,8 @@ resource adminAppSettings 'Microsoft.Web/sites/config@2024-11-01' = {
     empty(dataApiTestBaseUrl) ? {} : { DATA_API_BASE_URL_TEST: dataApiTestBaseUrl },
     empty(dataApiTestAdminKeySecretName) ? {} : { DATA_API_ADMIN_KEY_TEST: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${dataApiTestAdminKeySecretName})' },
     empty(scmDoBuildDuringDeployment) ? {} : { SCM_DO_BUILD_DURING_DEPLOYMENT: scmDoBuildDuringDeployment },
+    empty(studioApiBaseUrl) ? {} : { INVI_STUDIO_API_BASE_URL: studioApiBaseUrl },
+    empty(studioAdminKeySecretName) ? {} : { STUDIO_ADMIN_API_KEY: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=${studioAdminKeySecretName})' },
     easyAuthEnabled
       ? {
           MICROSOFT_PROVIDER_AUTHENTICATION_SECRET: entraClientSecret

@@ -21,6 +21,8 @@ using '../modules/adminapp-rbac.bicep'
 // Azure refuses a role assignment on a secret that is not there yet. Where each secret comes from:
 //   admin-publishing-api-key   created by hand; the Data API reads the same value as
 //                              ADMIN_PUBLISHING_API_KEY
+//   studio-admin-api-key       created by hand for the Studio API (S3); the panel's server sends it as
+//                              X-Studio-Admin-Key to approve Studio sign-ups (STUDIO_ADMIN_API_KEY)
 // The role is Key Vault Secrets User, on each secret and not on the vault, so the admin app cannot read
 // any other secret in kv-invi-prod-001. The role takes a few minutes to reach the vault's data plane.
 // Removing a secret from this list later does not remove its role assignment (Incremental mode never
@@ -33,6 +35,7 @@ param instance = '001'
 param secretNames = [
   'admin-publishing-api-key'
   'admin-publishing-api-key-test'
+  'studio-admin-api-key'
 ]
 
 // The assignment for the test key was made by hand (2026-10-06). Azure allows one assignment per principal, role and
